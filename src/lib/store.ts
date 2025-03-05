@@ -2,14 +2,14 @@ import type { Action, ThunkAction } from '@reduxjs/toolkit';
 import { combineSlices, configureStore } from '@reduxjs/toolkit'
 import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
-import { themeSlice } from './slices/theme-slice'
+import { contextMenuSlice, SLICE_NAME as ContextMenuSliceName } from './slices/context-menu-slice'
 
 const persistConfig = {
   key: 'root',
   storage,
 };
 
-const rootReducer = persistReducer(persistConfig, combineSlices(themeSlice));
+const rootReducer = persistReducer(persistConfig, combineSlices(contextMenuSlice));
 
 export const makeStore = () => {
   const store = configureStore({
@@ -17,7 +17,17 @@ export const makeStore = () => {
     middleware: (getDefaultMiddleware) =>
       getDefaultMiddleware({
         serializableCheck: {
-          ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+          ignoredPaths: ['contextMenu'],
+          ignoredActions: [
+            FLUSH,
+            REHYDRATE,
+            PAUSE,
+            PERSIST,
+            PURGE,
+            REGISTER,
+            `${ContextMenuSliceName}/openContextMenu`,
+            `${ContextMenuSliceName}/closeContextMenu`,
+          ],
         },
       }),
   });

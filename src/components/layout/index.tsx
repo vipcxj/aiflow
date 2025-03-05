@@ -12,27 +12,27 @@ const MainLayout = ({ children }: PropsWithChildren) => {
     >
       <MenuBar
         className={`
-          menubar
           flex w-full
-          border-b border-gray-200 bg-white px-5
-          dark:border-gray-800 dark:bg-black
+          navbar bg-base shadow-sm
         `}
       />
       <div className="flex h-full">
         <SideBar
           className={`
-            sidebar 
-            fixed top-0 left-0 z-9999 
-            flex h-full w-[290px] 
-            flex-col overflow-y-auto 
-            border-r border-gray-200 bg-white px-5
-            transition-all duration-300
-            lg:static lg:translate-x-0
-            dark:border-gray-800 dark:bg-black
-            -translate-x-full
+            flex flex-col h-full
+            overflow-y-auto
+            shadow-lg
+            bg-base-200
+            border-r border-base-100
           `}
         />
-        <Workspace>
+        <Workspace
+          className={`
+            relative flex flex-col flex-1
+            overflow-x-hidden overflow-y-hidden
+            bg-base-300
+          `}
+        >
           {children}
         </Workspace>
       </div>
