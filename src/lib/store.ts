@@ -7,6 +7,7 @@ import { contextMenuSlice, SLICE_NAME as ContextMenuSliceName } from './slices/c
 const persistConfig = {
   key: 'root',
   storage,
+  blacklist: [ContextMenuSliceName],
 };
 
 const rootReducer = persistReducer(persistConfig, combineSlices(contextMenuSlice));
