@@ -10,16 +10,19 @@ export interface ContextMenuItemMenu {
     icon?: string;
     subMenu?: ContextMenuState;
     data?: unknown;
+    selected?: boolean;
     onClick?: (data: unknown) => void;
 };
 
 export type ContextMenuItem = ContextMenuItemSeparator | ContextMenuItemMenu;
 
 export type ContextMenuState = {
-    title: string;
+    title?: string;
     items: ContextMenuItem[];
     visible?: boolean;
     position?: { x: number, y: number };
+    sideOfParent?: 'left' | 'right';
+    ready?: boolean; // 菜单需要渲染2次，第一次渲染时不显示，用于为第二次渲染定位，第二次渲染时显示
 };
 
 export const isSeparator = (item: ContextMenuItem): item is ContextMenuItemSeparator => {

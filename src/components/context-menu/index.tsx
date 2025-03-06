@@ -5,12 +5,16 @@ import { ContextMenuItem, ContextMenuState, isMenu, isSeparator } from "./type";
 import { adjustContextMenu } from './hook';
 import { ChevronRight } from "../icons/chevron-right";
 import { JSX, useCallback, MouseEvent } from "react";
+import cs from 'classnames';
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closeContextMenu, openContextSubMenu } from "@/lib/slices/context-menu-slice";
+import { ChevronDown } from "../icons/chevron-down";
+import { TruncateText } from "../text";
 
 type Position = { x: number, y: number };
-type OpenSubMenuFun = (path: number[], position: Position) => void;
+type OpenSubMenuFun = (path: number[], position: Position, side: 'left' | 'right' | undefined, ready: boolean) => void;
 type CloseMenuFun = () => void;
+const doNothing = () => {};
 
 const genMenuId = (path: number[]) => {
   if (path.length === 0) {
@@ -31,19 +35,23 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
     if (item.subMenu) {
       createMenu(menus, path, item.subMenu, openSubMenu, closeMenu);
       const onClick = (e: MouseEvent<HTMLLIElement>) => {
-        openSubMenu(path, { x: e.pageX, y: e.pageY });
+        openSubMenu(path, { x: e.pageX, y: e.pageY }, undefined, false);
         setTimeout(() => {
-          adjustContextMenu(genMenuId(path.slice(0, -1)), genMenuId(path), e.pageX, e.pageY, (position) => {
-            openSubMenu(path, position);
+          adjustContextMenu(genMenuId(path.slice(0, -1)), genMenuId(path), e.pageX, e.pageY, (position, side, ready) => {
+            openSubMenu(path, position, side, ready || false);
           });
         }, 0);
       };
       return (
-        <li key={id} onClick={onClick}>
+        <li key={id} onClick={onClick} className={cs({ 'menu-selected': item.selected })}>
           <a>
-            {item.icon && <Icon key="icon" name={item.icon as IconName} className="h-5 w-5" />}
-            {item.label}
-            <ChevronRight className="h-3 w-3 justify-self-end" />
+            {item.icon && <Icon key="icon" name={item.icon as IconName} className="h-5 w-5 shrink-0" />}
+            <TruncateText text={item.label} className="truncate flex-1" />
+            <label className="swap swap-rotate justify-self-end shrink-0">
+              <input type="checkbox" readOnly checked={item.selected} onChange={doNothing} />
+              <ChevronRight className="h-3 w-3 swap-off" />
+              <ChevronDown className="h-3 w-3 swap-on" />
+            </label>
           </a>
         </li>
       );
@@ -57,8 +65,8 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
       return (
         <li key={id} onClick={onClick}>
           <a>
-            {item.icon && <Icon key="icon" name={item.icon as IconName} className="h-5 w-5" />}
-            {item.label}
+            {item.icon && <Icon key="icon" name={item.icon as IconName} className="h-5 w-5 shrink-0" />}
+            <TruncateText text={item.label} className="truncate flex-1" />
           </a>
         </li>
       );
@@ -68,21 +76,45 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
   }
 };
 
-const createMenu = (result: JSX.Element[], path: number[], { visible, title, items, position }: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun) => {
+const createMenu = (result: JSX.Element[], path: number[], { visible, title, items, position, sideOfParent, ready }: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun) => {
   if (!visible)
     return;
   const id = genMenuId(path);
   result.push(
-    <div 
-      id={id} key={id} 
-      className="absolute card min-w-48 max-w-64 bg-base-100 shadow-sm" 
+    <div
+      id={id} key={id}
+      className={cs(
+        "absolute card bg-base-100 shadow-sm",
+        "min-w-48 max-w-64 max-h-96",
+        "border-1 border-primary-content/30",
+        "overflow-x-hidden",
+        "overflow-y-hidden",
+        {
+          'left-side': sideOfParent === 'left',
+          'right-side': sideOfParent === 'right',
+          'invisible': !ready,
+        },
+      )}
       style={{ top: position?.y || 0, left: position?.x || 0, zIndex: 10000 + path.length }}
     >
-      <ul className="menu menu-sm w-full">
-        {title && <li className="menu-title text-xs !pt-1 !pb-1">{title}</li>}
-        {title && <div className="divider divider-vertical mt-0 mb-0" />}
-        {items.map((item, i) => createMenuItem([...path, i], item, openSubMenu, closeMenu, result))}
-      </ul>
+      {/* 固定的标题部分 */}
+      {title && (
+        <div className="sticky top-0 z-[1] bg-base-100 pb-0"> {/* 使用sticky定位保持在顶部 */}
+          <ul className="menu menu-sm w-full mb-0 pb-0">
+            <li className="menu-title text-xs w-full !pt-1 !pb-1">
+              <TruncateText text={title} className="truncate w-full" />
+            </li>
+            <div className="divider mt-0 mb-0" />
+          </ul>
+        </div>
+      )}
+      
+      {/* 可滚动的菜单项部分 */}
+      <div className="overflow-y-auto max-h-[calc(24rem-36px)]"> {/* 设置最大高度并允许滚动 */}
+        <ul className={cs("menu menu-sm w-full", { 'pt-0': title, 'mt-0': title })}>
+          {items.map((item, i) => createMenuItem([...path, i], item, openSubMenu, closeMenu, result))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -90,8 +122,8 @@ const createMenu = (result: JSX.Element[], path: number[], { visible, title, ite
 export const ContextMenu = () => {
   const menuState = useAppSelector(state => state.contextMenu);
   const dispatch = useAppDispatch();
-  const openSubMenu = (path: number[], position: { x: number, y: number }) => {
-    dispatch(openContextSubMenu({ path, position }));
+  const openSubMenu = (path: number[], position: { x: number, y: number }, side: 'left' | 'right' | undefined, ready: boolean) => {
+    dispatch(openContextSubMenu({ path, position, sideOfParent: side, ready }));
   };
   const closeMenu = useCallback(() => dispatch(closeContextMenu()), [dispatch]);
   const menus: JSX.Element[] = [];

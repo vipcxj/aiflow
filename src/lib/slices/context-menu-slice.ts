@@ -9,26 +9,42 @@ export const initialState: ContextMenuState = {
   items: [],
   visible: false,
   position: { x: 0, y: 0 },
+  ready: false,
 };
 
 export type PayloadOpenContextMenu = {
   title: string;
   items: ContextMenuItem[];
   position: { x: number, y: number };
+  ready: boolean;
 };
 
 export type PayloadOpenContextSubMenu = {
   path: number[];
   position: { x: number, y: number };
+  sideOfParent?: 'left' | 'right';
+  ready: boolean;
 };
 
-const closeMenu = (state: ContextMenuState) => {
-  state.visible = false;
-  state.position = { x: 0, y: 0 };
+const closeMenu = (state: ContextMenuState, excludeRoot: boolean = false, excludePath: number[] = []) => {
+  let id: number | undefined = undefined;
+  let otherPath: number[] = [];
+  if (excludePath.length > 0) {
+    [id, ... otherPath] = excludePath;
+  }
+  if (!excludeRoot) {
+    state.visible = false;
+    state.position = { x: 0, y: 0 };
+    state.sideOfParent = undefined;
+    state.ready = false;
+  }
   if (state.items) {
-    state.items.forEach(item => {
+    state.items.forEach((item, i) => {
       if (isMenu(item) && item.subMenu) {
-        closeMenu(item.subMenu);
+        if (id !== i) {
+          item.selected = false;
+        }
+        closeMenu(item.subMenu, id === i, otherPath);
       }
     });
   }
@@ -43,10 +59,12 @@ export const contextMenuSlice = createAppSlice({
       state.items = action.payload.items;
       state.position = action.payload.position;
       state.visible = true;
+      state.ready = action.payload.ready;
     }),
     openContextSubMenu: create.reducer((state, action: PayloadAction<PayloadOpenContextSubMenu>) => {
       let items = state.items;
       const path = action.payload.path;
+      closeMenu(state, true, path);
       let item: ContextMenuItem | undefined = undefined;
       for (let i = 0; i < path.length; i++) {
         item = items[path[i]];
@@ -55,8 +73,11 @@ export const contextMenuSlice = createAppSlice({
         }
       }
       if (item && isMenu(item) && item.subMenu) {
+        item.selected = true;
         item.subMenu.visible = true;
         item.subMenu.position = action.payload.position;
+        item.subMenu.sideOfParent = action.payload.sideOfParent;
+        item.subMenu.ready = action.payload.ready;
       }
     }),
     closeContextMenu: create.reducer((state) => {

@@ -3,11 +3,26 @@ import { useCallback, useEffect } from "react"
 import { closeContextMenu, openContextMenu } from "@/lib/slices/context-menu-slice";
 import { ContextMenuItem } from "./type";
 
-export function adjustContextMenu(parent_id: string, id: string, x: number, y: number, updatePosition: (position: { x: number; y: number; }) => void) {
-  const parent = document.getElementById(parent_id);
-  const menuElement = document.getElementById(id);
+export function getAllContextMenus(): HTMLElement[] {
+  // 获取菜单根元素
+  const menuRootElement = document.getElementById('context-menu-root');
 
+  if (!menuRootElement) return [];
+  return Array.from(menuRootElement.querySelectorAll('[id^="context-menu"]'));
+}
+
+export function adjustContextMenu(parentId: string, id: string, x: number, y: number, updatePosition: (position: { x: number; y: number; }, side?: 'left' | 'right', ready?: boolean) => void) {
+  const menuElement = document.getElementById(id);
   if (!menuElement) return;
+
+  // 获取父菜单元素
+  const parentElement = document.getElementById(parentId);
+
+  // 确定初始方向
+  let side: 'left' | 'right' = 'right';
+  if (parentElement && Array.from(parentElement.classList).some(className => className === 'left-side')) {
+    side = 'left';
+  }
 
   // 获取视口尺寸
   const viewportWidth = window.innerWidth;
@@ -16,49 +31,10 @@ export function adjustContextMenu(parent_id: string, id: string, x: number, y: n
   const menuWidth = menuElement.offsetWidth;
   const menuHeight = menuElement.offsetHeight;
 
-  let parentRect: DOMRect | null = null;
+  let newPosition: { x: number, y: number };
 
-  // 如果有父元素，获取其位置和尺寸
-  if (parent) {
-    parentRect = parent.getBoundingClientRect();
-  }
-
-  // 根据父元素位置调整子菜单位置，避免重叠
-  if (parentRect) {
-    // 默认尝试将子菜单放在父菜单的右侧
-    x = parentRect.right + 5; // 右侧偏移5px
-
-    // 如果父菜单在右侧，导致子菜单会超出右边界，则将子菜单放在父菜单左侧
-    if (x + menuWidth > viewportWidth) {
-      x = parentRect.left - menuWidth - 5; // 左侧偏移5px
-    }
-
-    // 垂直对齐逻辑：首先尝试直接对齐点击位置
-    // 尝试获取在父菜单中点击的菜单项的垂直位置
-    const clickRelativeToParent = Math.max(0, y - parentRect.top - 64);
-
-    // 首选：将子菜单与点击位置对齐
-    y = parentRect.top + clickRelativeToParent;
-
-    // 检查是否会超出下边界
-    if (y + menuHeight > viewportHeight) {
-      // 如果超出下边界，有两种策略：
-
-      // 策略1：尝试将整个菜单上移，保持在视口内
-      const adjustedY = viewportHeight - menuHeight - 5;
-
-      // 策略2：如果父菜单高度足够，可以尝试与父菜单底部对齐
-      // 取两种策略中较大的值（更靠近原始点击位置）
-      y = Math.max(adjustedY, parentRect.bottom - menuHeight);
-    }
-
-    // 检查是否会超出上边界
-    if (y < 5) {
-      // 如果会超出上边界，设置到最小边距
-      y = 5;
-    }
-  } else {
-    // 无父元素时的常规边界检查
+  // 没有父菜单的情况 - 直接调整位置防止超出视口
+  if (!parentElement || !parentId) {
     // 检查右边界
     if (x + menuWidth > viewportWidth) {
       x = viewportWidth - menuWidth - 5;
@@ -68,15 +44,88 @@ export function adjustContextMenu(parent_id: string, id: string, x: number, y: n
     if (y + menuHeight > viewportHeight) {
       y = viewportHeight - menuHeight - 5;
     }
+
+    // 确保不会出现负值
+    x = Math.max(5, x);
+    y = Math.max(5, y);
+
+    newPosition = { x, y };
+
+    updatePosition(newPosition, side, false);
+  } else {
+    // 有父菜单的情况
+    const parentRect = parentElement.getBoundingClientRect();
+
+    // 根据父菜单的 side 决定子菜单的初始位置
+    let newX: number;
+    if (side === 'right') {
+      // 默认尝试将子菜单放在父菜单的右侧
+      newX = parentRect.right + 5;
+
+      // 如果放在右侧会超出视口，则尝试放在左侧
+      if (newX + menuWidth > viewportWidth) {
+        newX = parentRect.left - menuWidth - 5;
+        side = 'left'; // 更新 side
+      }
+    } else {
+      // 默认尝试将子菜单放在父菜单的左侧
+      newX = parentRect.left - menuWidth - 5;
+
+      // 如果放在左侧会超出视口，则尝试放在右侧
+      if (newX < 5) {
+        newX = parentRect.right + 5;
+        side = 'right'; // 更新 side
+      }
+    }
+
+    // 垂直对齐 - 尝试与点击位置对齐, 64是估算的菜单标题高度
+    // 假设y是相对于点击位置的
+    const clickRelativeToParent = Math.max(0, y - parentRect.top - 64);
+    let newY = parentRect.top + clickRelativeToParent;
+
+    // 检查是否会超出下边界
+    if (newY + menuHeight > viewportHeight) {
+      // 先尝试上移，保持在视口内
+      newY = viewportHeight - menuHeight - 5;
+      // 如果向上移动后会导致上边界出界，再次调整
+      if (newY < 5) newY = 5;
+    }
+
+    // 最终安全检查 - 确保不超出视口（当所有尝试都失败时）
+    if (newX + menuWidth > viewportWidth) {
+      newX = viewportWidth - menuWidth - 5;
+      side = 'left'; // 如果右侧放不下，标记为左侧
+    }
+    if (newX < 5) {
+      newX = 5;
+      side = 'right'; // 如果左侧放不下，标记为右侧
+    }
+
+    // 更新菜单位置
+    newPosition = { x: newX, y: newY };
+    updatePosition(newPosition, side, false);
   }
-
-  // 确保不会出现负值
-  x = Math.max(5, x);
-  y = Math.max(5, y);
-
-  // 更新菜单位置
-  const position = { x, y };
-  updatePosition(position);
+  const waitSizeStable = (oldWidth: number, oldHeight: number, adjust: boolean) => {
+    const menuElement = document.getElementById(id);
+    if (!menuElement) return;
+    const newMenuWidth = menuElement.offsetWidth;
+    const newMenuHeight = menuElement.offsetHeight;
+    // 如果菜单高度发生变化，则重新调整位置
+    if (newMenuWidth !== oldWidth || newMenuHeight !== oldHeight) {
+      setTimeout(() => {
+        waitSizeStable(newMenuWidth, newMenuHeight, true);
+      }, 1);
+    } else {
+      if (adjust) {
+        adjustContextMenu(parentId, id, x, y, updatePosition);
+      } else {
+        updatePosition(newPosition, side, true);
+      }
+    }
+  };
+  setTimeout(() => {
+    waitSizeStable(menuWidth, menuHeight, false);
+  }, 1);
 }
 
 export function useOpenContextMenu<T>(title: string, items: ContextMenuItem[]) {
@@ -88,17 +137,17 @@ export function useOpenContextMenu<T>(title: string, items: ContextMenuItem[]) {
     const x = e.pageX;
     const y = e.pageY;
 
-    const updatePosition = (position: { x: number, y: number }) => {
-      dispatch(openContextMenu({ title, items, position }));
+    const updatePosition = (position: { x: number, y: number }, side?: 'left' | 'right', ready?: boolean) => {
+      dispatch(openContextMenu({ title, items, position, ready: ready || false }));
     };
+
+    const position = { x: e.pageX, y: e.pageY };
+    dispatch(openContextMenu({ title, items, position, ready: false }));
 
     // 异步调整位置 - 等待菜单元素渲染后再计算
     setTimeout(() => {
       adjustContextMenu('', 'context-menu', x, y, updatePosition);
     }, 0);
-
-    const position = { x: e.pageX, y: e.pageY };
-    dispatch(openContextMenu({ title, items, position }));
   }, [dispatch, title, items]);
   useEffect(() => {
     // 处理点击事件，只有在点击菜单外部时关闭
