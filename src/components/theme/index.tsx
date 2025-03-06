@@ -1,7 +1,6 @@
 'use client'
 
 import { ThemeProvider as NextThemeProvider, useTheme } from "next-themes";
-import cs from "classnames";
 import { Moon } from "../icons/moon";
 import { Sun } from "../icons/sun";
 import { PropsWithChildren, useCallback } from "react";

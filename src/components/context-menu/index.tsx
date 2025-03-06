@@ -10,11 +10,12 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { closeContextMenu, openContextSubMenu } from "@/lib/slices/context-menu-slice";
 import { ChevronDown } from "../icons/chevron-down";
 import { TruncateText } from "../text";
+import { ArrowScrollbar } from "../scrollable";
 
 type Position = { x: number, y: number };
 type OpenSubMenuFun = (path: number[], position: Position, side: 'left' | 'right' | undefined, ready: boolean) => void;
 type CloseMenuFun = () => void;
-const doNothing = () => {};
+const doNothing = () => { };
 
 const genMenuId = (path: number[]) => {
   if (path.length === 0) {
@@ -48,7 +49,7 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
             {item.icon && <Icon key="icon" name={item.icon as IconName} className="h-5 w-5 shrink-0" />}
             <TruncateText text={item.label} className="truncate flex-1" />
             <label className="swap swap-rotate justify-self-end shrink-0">
-              <input type="checkbox" readOnly checked={item.selected} onChange={doNothing} />
+              <input type="checkbox" readOnly checked={!!item.selected} onChange={doNothing} />
               <ChevronRight className="h-3 w-3 swap-off" />
               <ChevronDown className="h-3 w-3 swap-on" />
             </label>
@@ -108,13 +109,13 @@ const createMenu = (result: JSX.Element[], path: number[], { visible, title, ite
           </ul>
         </div>
       )}
-      
+
       {/* 可滚动的菜单项部分 */}
-      <div className="overflow-y-auto max-h-[calc(24rem-36px)]"> {/* 设置最大高度并允许滚动 */}
+      <ArrowScrollbar direction="vertical" className="max-h-[calc(24rem-36px)]"> {/* 设置最大高度并允许滚动 */}
         <ul className={cs("menu menu-sm w-full", { 'pt-0': title, 'mt-0': title })}>
           {items.map((item, i) => createMenuItem([...path, i], item, openSubMenu, closeMenu, result))}
         </ul>
-      </div>
+      </ArrowScrollbar>
     </div>
   );
 }
