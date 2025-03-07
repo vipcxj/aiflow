@@ -3,6 +3,7 @@ import { combineSlices, configureStore } from '@reduxjs/toolkit'
 import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 import { contextMenuSlice, SLICE_NAME as ContextMenuSliceName } from './slices/context-menu-slice'
+import { flowSlice } from './slices/flow-slice';
 
 const persistConfig = {
   key: 'root',
@@ -10,7 +11,7 @@ const persistConfig = {
   blacklist: [ContextMenuSliceName],
 };
 
-const rootReducer = persistReducer(persistConfig, combineSlices(contextMenuSlice));
+const rootReducer = persistReducer(persistConfig, combineSlices(contextMenuSlice, flowSlice));
 
 export const makeStore = () => {
   const store = configureStore({
