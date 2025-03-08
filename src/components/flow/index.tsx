@@ -1,6 +1,6 @@
 'use client';
 import { Background, ColorMode, Controls, EdgeChange, MiniMap, NodeChange, ReactFlow } from '@xyflow/react'
-import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange } from '@/lib/slices/flow-slice';
+import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange } from '@/lib/slices/workspace-slice';
 
 import '@xyflow/react/dist/style.css';
 import { useTheme } from 'next-themes';

@@ -3,8 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
-    "build": "next build",
+    "generate-icons": "node scripts/generate-icons-index.js",
+    "dev": "pnpm run generate-icons && next dev --turbopack",
+    "build": "pnpm run generate-icons && next build",
     "start": "next start",
     "lint": "next lint"
   },
