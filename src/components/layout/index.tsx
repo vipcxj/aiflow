@@ -12,8 +12,7 @@ const MainLayout = ({ children }: PropsWithChildren) => {
     >
       <MenuBar
         className={`
-          flex w-full
-          navbar bg-base shadow-sm
+          bg-base shadow-sm
         `}
       />
       <div className="flex h-full">

@@ -8,6 +8,7 @@ export type FlowState = {
 };
 
 export type WorkspaceState = {
+  id: string;
   title: string;
   filePath: string;
   main: FlowState;
@@ -19,31 +20,30 @@ export type WorkspaceState = {
 };
 
 export type WorkspacesState = {
+  nextId: number;
   current: string;
-  workspaces: {
-    [key: string]: WorkspaceState;
-  },
+  workspaces: WorkspaceState[];
 };
 
 export const initialState: WorkspacesState = {
-  current: 'Untitled-1',
-  workspaces: {
-    'Untitled-1': {
-      title: 'Untitled-1',
-      filePath: '',
-      main: {
-        nodes: [],
-        edges: [],
-      },
-      sub: {},
-      path: [],
-      dirty: false,
+  nextId: 0,
+  current: 'ws-0',
+  workspaces: [{
+    id: 'ws-0',
+    title: 'Untitled-1',
+    filePath: '',
+    main: {
+      nodes: [],
+      edges: [],
     },
-  },
+    sub: {},
+    path: [],
+    dirty: false,
+  }],
 };
 
 function currentWorkspace(state: WorkspacesState) {
-  return state.workspaces[state.current];
+  return state.workspaces.find(ws => ws.id === state.current)!;
 }
 
 function currentFlow(state: WorkspaceState) {
@@ -62,10 +62,50 @@ function markDirty(state: WorkspacesState, dirty: boolean) {
   currentWorkspace(state).dirty = dirty;
 }
 
+// 生成唯一的标题
+function generateUniqueTitle(workspaces: WorkspaceState[]): string {
+  let counter = 1;
+  let title = `Untitled-${counter}`;
+  
+  while (workspaces.some(ws => ws.title === title)) {
+    counter++;
+    title = `Untitled-${counter}`;
+  }
+  
+  return title;
+}
+
 export const flowSlice = createSlice({
   name: 'flow',
   initialState,
   reducers: {
+    newWorkspace: (state) => {
+      const title = generateUniqueTitle(state.workspaces);
+      const id = `ws-${state.nextId++}`;
+      state.workspaces.push({
+        id,
+        title,
+        filePath: '',
+        main: {
+          nodes: [],
+          edges: [],
+        },
+        sub: {},
+        path: [],
+        dirty: false,
+      });
+      state.current = id;
+    },
+    closeWorkspace: (state, action: PayloadAction<string>) => {
+      const index = state.workspaces.findIndex(ws => ws.id === action.payload);
+      if (index === -1) {
+        return;
+      }
+      state.workspaces.splice(index, 1);
+      if (state.current === action.payload) {
+        state.current = state.workspaces[0].id;
+      }
+    },
     setNodes: (state, action: PayloadAction<AFNode[]>) => {
       const flow = currentFlowFromWS(state);
       flow.nodes = action.payload;
@@ -88,6 +128,8 @@ export const flowSlice = createSlice({
     },
   },
   selectors: {
+    selectWorkspaces: (state) => state.workspaces,
+    selectCurrentWorkspaceId: (state) => state.current,
     selectCurrentWorkspace: (state) => currentWorkspace(state),
     selectCurrentFlow: (state) => currentFlowFromWS(state),
     selectNodes: (state) => currentFlowFromWS(state).nodes,
@@ -95,5 +137,19 @@ export const flowSlice = createSlice({
   },
 });
 
-export const { setNodes, setEdges, applyNodesChange, applyEdgesChange } = flowSlice.actions;
-export const { selectCurrentWorkspace, selectCurrentFlow, selectNodes, selectEdges } = flowSlice.selectors;
+export const {
+  newWorkspace,
+  closeWorkspace,
+  setNodes,
+  setEdges,
+  applyNodesChange,
+  applyEdgesChange
+} = flowSlice.actions;
+export const {
+  selectWorkspaces,
+  selectCurrentWorkspaceId,
+  selectCurrentWorkspace,
+  selectCurrentFlow,
+  selectNodes,
+  selectEdges
+} = flowSlice.selectors;

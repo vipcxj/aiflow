@@ -1,3 +1,5 @@
+"use client";
+
 import { HTMLProps, useCallback, useEffect, useRef, useState } from "react";
 import cs from 'classnames';
 import { ChevronDown } from "../icons/chevron-down";
@@ -7,9 +9,17 @@ import { ChevronRight } from "../icons/chevron-right";
 
 export type ArrowScrollbarProps = {
   direction: 'vertical' | 'horizontal' | 'all';
+  contentClassName?: string;
+  contentStyle?: React.CSSProperties;
 } & HTMLProps<HTMLDivElement>;
 
-export const ArrowScrollbar = ({ direction, className, style, children, ...props }: ArrowScrollbarProps) => {
+export const ArrowScrollbar = ({
+  direction,
+  className, style,
+  contentClassName, contentStyle,
+  children,
+  ...props
+}: ArrowScrollbarProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [showLeftArrow, setShowLeftArrow] = useState(false);
   const [showRightArrow, setShowRightArrow] = useState(false);
@@ -58,6 +68,17 @@ export const ArrowScrollbar = ({ direction, className, style, children, ...props
     updateArrowsVisibility();
   };
 
+  // 处理鼠标滚轮事件，将垂直滚动转换为水平滚动
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (direction !== 'horizontal' || !containerRef.current) return;
+
+    e.preventDefault();
+
+    // 滚动距离，可以根据需要调整系数
+    const scrollAmount = e.deltaY * 0.5;
+    containerRef.current.scrollLeft += scrollAmount;
+  }, [direction]);
+
   // 点击箭头滚动处理
   const scrollLeft = () => {
     if (!containerRef.current) return;
@@ -93,6 +114,18 @@ export const ArrowScrollbar = ({ direction, className, style, children, ...props
     };
   }, [updateArrowsVisibility]);
 
+  // 添加鼠标滚轮事件监听
+  useEffect(() => {
+    const currentContainer = containerRef.current;
+    if (currentContainer && direction === 'horizontal') {
+      currentContainer.addEventListener('wheel', handleWheel, { passive: false });
+
+      return () => {
+        currentContainer.removeEventListener('wheel', handleWheel);
+      };
+    }
+  }, [direction, handleWheel]);
+
   // 当子元素内容变化时检查
   useEffect(() => {
     // 使用MutationObserver监听子元素变化
@@ -112,14 +145,15 @@ export const ArrowScrollbar = ({ direction, className, style, children, ...props
   }, [updateArrowsVisibility]);
 
   return (
-    <div className="relative">
+    <div className={cs('relative', className)} style={style}>
       {/* 滚动容器 */}
       <div
         ref={containerRef}
         {...props}
         onScroll={handleScroll}
         style={{
-          ...style,
+          ...contentStyle,
+          position: 'relative',
           paddingLeft,
           paddingRight,
           paddingTop,
@@ -127,7 +161,8 @@ export const ArrowScrollbar = ({ direction, className, style, children, ...props
           transition: 'padding 0.2s ease'
         }}
         className={cs(
-          className,
+          contentClassName,
+          'w-full',
           'scrollbar-hide',
           {
             'overflow-x-auto': direction === 'horizontal' || direction === 'all',
