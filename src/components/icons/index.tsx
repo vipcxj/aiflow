@@ -5,9 +5,13 @@ import { ChevronLeft } from "./chevron-left";
 import { ChevronRight } from "./chevron-right";
 import { ChevronUp } from "./chevron-up";
 import { CpuChip } from "./cpu-chip";
+import { LockClosed } from "./lock-closed";
+import { LockOpen } from "./lock-open";
 import { Moon } from "./moon";
 import { Play } from "./play";
+import { Plus } from "./plus";
 import { Sun } from "./sun";
+import { XMark } from "./x-mark";
 
 export type IconName =
   'bars-3-bottom-left'
@@ -16,9 +20,13 @@ export type IconName =
   | 'chevron-right'
   | 'chevron-up'
   | 'cpu-chip'
+  | 'lock-closed'
+  | 'lock-open'
   | 'moon'
   | 'play'
-  | 'sun';
+  | 'plus'
+  | 'sun'
+  | 'x-mark';
 
 export type IconProps = {
   name: IconName;
@@ -39,12 +47,20 @@ export const Icon = ({ name, className }: IconProps) => {
       return <ChevronUp className={className} />;
     case 'cpu-chip':
       return <CpuChip className={className} />;
+    case 'lock-closed':
+      return <LockClosed className={className} />;
+    case 'lock-open':
+      return <LockOpen className={className} />;
     case 'moon':
       return <Moon className={className} />;
     case 'play':
       return <Play className={className} />;
+    case 'plus':
+      return <Plus className={className} />;
     case 'sun':
       return <Sun className={className} />;
+    case 'x-mark':
+      return <XMark className={className} />;
     default:
       return null;
   }

@@ -121,6 +121,7 @@ export type FloatType = {
 export type StringType = {
   name: 'string';
   enum?: string[];
+  pattern?: string;
   default?: string;
 };
 
@@ -157,7 +158,8 @@ export type PythonObjectType = {
 };
 
 export type NodeEntryType = 
-  StringType 
+  StringType
+  | AnyType
   | IntType
   | FloatType 
   | BoolType
@@ -182,11 +184,16 @@ export type NodeEntry = {
   type: NodeEntryType;
   recommandLevel: RecommandLevel;
   description: string;
+  verificationCode?: {
+    js?: string;
+    py?: string;
+  };
 };
 
 export type NodeMeta = {
   id: string;
   version: string;
+  title: string;
   type: NodeType;
   native: boolean;
   impl?: string;
@@ -194,7 +201,7 @@ export type NodeMeta = {
   verificationCode?: {
     js?: string;
     py?: string;
-  },
+  };
   inputs: NodeEntry[];
   outputs: NodeEntry[];
   defaultRenderer?: string;
@@ -205,18 +212,50 @@ export type NodeMetaRef = {
   version: string;
 };
 
-export type Node = {
+export type NodeEntryRuntime = {
+  name: string;
+  mode: 'handle';
+  target: {
+    node: string;
+    entry: string;
+  };
+} | {
+  name: string;
+  mode: 'input';
+  data: any;
+};
+
+export type NodeData = {
   id: string;
   meta: NodeMetaRef;
+  title?: string;
   position: {
     x: number;
     y: number;
   },
-  size: {
+  size?: {
     width: number;
     height: number;
   },
   collapsed: boolean;
   nativeMode: NodeNativeMode;
   renderer: string;
+  inputs: NodeEntryRuntime[];
+  outputs: NodeEntryRuntime[];
 };
+
+export type EdgeData = {
+  sourceNode: string;
+  sourceEntry: string;
+  targetNode: string;
+  targetEntry: string;
+}
+
+export type FlowData = {
+  nodes: NodeData[];
+  edges: EdgeData[];
+  nodeMetas: NodeMeta[];
+  subFlows: {
+    [key: string]: FlowData;
+  };
+}

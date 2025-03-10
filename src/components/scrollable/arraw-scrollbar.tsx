@@ -47,7 +47,7 @@ export const ArrowScrollbar = ({
       // 有水平滚动条且不在最右侧
       setShowRightArrow(
         container.scrollWidth > container.clientWidth &&
-        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 2
       );
     }
 
@@ -58,7 +58,7 @@ export const ArrowScrollbar = ({
       // 有垂直滚动条且不在底部
       setShowBottomArrow(
         container.scrollHeight > container.clientHeight &&
-        container.scrollTop < container.scrollHeight - container.clientHeight - 1
+        container.scrollTop < container.scrollHeight - container.clientHeight - 2
       );
     }
   }, [direction]);

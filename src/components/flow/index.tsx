@@ -8,8 +8,13 @@ import { useGroundContextMenu } from './context-menu';
 import { useAppDispatch, useAppSelector } from '@/lib/hooks';
 import { AFEdge, AFNode } from '@/data/flow-type';
 import { useCallback } from 'react';
+import { BaseNode } from './node';
 
 const AFReactFlow = ReactFlow<AFNode, AFEdge>;
+
+const nodeTypes = {
+  base: BaseNode,
+};
 
 export const Flow = () => {
   const { onContextMenu } = useGroundContextMenu();
@@ -31,6 +36,7 @@ export const Flow = () => {
       onNodesChange={onNodesChange}
       edges={edges}
       onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
       colorMode={theme as ColorMode}
     >
       <Controls />
