@@ -2,8 +2,8 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { applyNodeChanges, applyEdgeChanges, NodeChange, EdgeChange } from '@xyflow/react';
 import type { FlowData, NodeData, NodeMeta, NodeMetaRef } from '@/data/data-type';
 import type { AFNode, AFEdge } from '@/data/flow-type';
-import { get } from 'http';
-import { getNodeMeta } from '@/data/utils';
+import { createAFNodeFromData, createNodeData, getNodeMeta } from '@/data/utils';
+import { globalNodeMetas } from '@/data/nodes';
 
 export type FlowState = {
   nodes: AFNode[];
@@ -33,6 +33,7 @@ function applyNodeDataChange(state: FlowState, nodeId: string) {
 
 export type WorkspaceState = {
   id: string;
+  nextNodeId: number;
   title: string;
   filePath: string;
   main: FlowState;
@@ -44,7 +45,7 @@ export type WorkspaceState = {
 };
 
 export type WorkspacesState = {
-  nextId: number;
+  nextWSId: number;
   current: string;
   workspaces: WorkspaceState[];
   nodeMetas: NodeMeta[];
@@ -64,10 +65,11 @@ function createEmptyFlow() {
 }
 
 export const initialState: WorkspacesState = {
-  nextId: 1,
+  nextWSId: 1,
   current: 'ws-0',
   workspaces: [{
     id: 'ws-0',
+    nextNodeId: 0,
     title: 'Untitled-1',
     filePath: '',
     main: createEmptyFlow(),
@@ -75,14 +77,14 @@ export const initialState: WorkspacesState = {
     path: [],
     dirty: false,
   }],
-  nodeMetas: [],
+  nodeMetas: globalNodeMetas,
 };
 
 function currentWorkspace(state: WorkspacesState) {
   return state.workspaces.find(ws => ws.id === state.current)!;
 }
 
-function currentFlow(state: WorkspaceState) {
+function currentFlow(state: WorkspaceState): FlowState {
   if (state.path.length === 0) {
     return state.main;
   }
@@ -90,7 +92,7 @@ function currentFlow(state: WorkspaceState) {
   return state.sub[name];
 }
 
-function currentFlowFromWS(state: WorkspacesState) {
+function currentFlowFromWS(state: WorkspacesState): FlowState {
   return currentFlow(currentWorkspace(state));
 }
 
@@ -113,9 +115,10 @@ function generateUniqueTitle(workspaces: WorkspaceState[]): string {
 
 function createNewWorkspace(state: WorkspacesState): void {
   const title = generateUniqueTitle(state.workspaces);
-  const id = `ws-${state.nextId++}`;
+  const id = `ws-${state.nextWSId++}`;
   state.workspaces.push({
     id,
+    nextNodeId: 0,
     title,
     filePath: '',
     main: createEmptyFlow(),
@@ -133,41 +136,54 @@ type PayloadSetNodeEntryData = {
   data: any;
 };
 
+type PayloadAddNewNode = {
+  meta: NodeMetaRef;
+  x: number;
+  y: number;
+};
+
 export const flowSlice = createSlice({
   name: 'flow',
   initialState,
   reducers: {
-    newWorkspace: (state) => {
-      createNewWorkspace(state as WorkspacesState);
+    newWorkspace: (state: WorkspacesState) => {
+      createNewWorkspace(state);
     },
-    closeWorkspace: (state, action: PayloadAction<string>) => {
+    closeWorkspace: (state: WorkspacesState, action: PayloadAction<string>) => {
       const index = state.workspaces.findIndex(ws => ws.id === action.payload);
       if (index === -1) {
         return;
       }
       state.workspaces.splice(index, 1);
       if (state.workspaces.length === 0) {
-        createNewWorkspace(state as WorkspacesState);
+        createNewWorkspace(state);
       }
       if (state.current === action.payload) {
         state.current = state.workspaces[0].id;
       }
     },
-    setCurrentWorkspace: (state, action: PayloadAction<string>) => {
+    setCurrentWorkspace: (state: WorkspacesState, action: PayloadAction<string>) => {
       if (state.workspaces.some(ws => ws.id === action.payload)) {
         state.current = action.payload;
       }
     },
-    addNode: (state: WorkspacesState, action: PayloadAction<NodeMetaRef>) => {
-      const flow = currentFlowFromWS(state);
-      const nodeMeta = getNodeMeta(flow.data, state.nodeMetas, action.payload);
+    addNode: (state: WorkspacesState, action: PayloadAction<PayloadAddNewNode>) => {
+      const workspace = currentWorkspace(state);
+      const flow = currentFlow(workspace);
+      const nodeMeta = getNodeMeta(flow.data, state.nodeMetas, action.payload.meta);
       if (!nodeMeta) {
         return;
       }
+      const nodeData = createNodeData(nodeMeta, action.payload.x, action.payload.y, () => {
+        return `node-${workspace.nextNodeId++}`;
+      });
+      const node = createAFNodeFromData(nodeData);
+      flow.data.nodes.push(nodeData);
+      flow.nodes.push(node);
       markDirty(state, true);
     },
-    setNodeEntryData: (state, action: PayloadAction<PayloadSetNodeEntryData>) => {
-      const flow = currentFlowFromWS(state as WorkspacesState);
+    setNodeEntryData: (state: WorkspacesState, action: PayloadAction<PayloadSetNodeEntryData>) => {
+      const flow = currentFlowFromWS(state);
       const node = getNodeData(flow, action.payload.nodeId);
       if (!node) {
         return;
@@ -178,23 +194,23 @@ export const flowSlice = createSlice({
         applyNodeDataChange(flow, action.payload.nodeId);
       }
     },
-    setNodes: (state, action: PayloadAction<AFNode[]>) => {
-      const flow = currentFlowFromWS(state as WorkspacesState);
+    setNodes: (state: WorkspacesState, action: PayloadAction<AFNode[]>) => {
+      const flow = currentFlowFromWS(state);
       flow.nodes = action.payload;
       markDirty(state, true);
     },
-    setEdges: (state, action: PayloadAction<AFEdge[]>) => {
-      const flow = currentFlowFromWS(state as WorkspacesState);
+    setEdges: (state: WorkspacesState, action: PayloadAction<AFEdge[]>) => {
+      const flow = currentFlowFromWS(state);
       flow.edges = action.payload;
       markDirty(state, true);
     },
-    applyNodesChange: (state, action: PayloadAction<NodeChange<AFNode>[]>) => {
-      const flow = currentFlowFromWS(state as WorkspacesState);
+    applyNodesChange: (state: WorkspacesState, action: PayloadAction<NodeChange<AFNode>[]>) => {
+      const flow = currentFlowFromWS(state);
       flow.nodes = applyNodeChanges(action.payload, flow.nodes);
       markDirty(state, true);
     },
-    applyEdgesChange: (state, action: PayloadAction<EdgeChange<AFEdge>[]>) => {
-      const flow = currentFlowFromWS(state as WorkspacesState);
+    applyEdgesChange: (state: WorkspacesState, action: PayloadAction<EdgeChange<AFEdge>[]>) => {
+      const flow = currentFlowFromWS(state);
       flow.edges = applyEdgeChanges(action.payload, flow.edges);
       markDirty(state, true);
     },
@@ -215,6 +231,7 @@ export const {
   newWorkspace,
   closeWorkspace,
   setCurrentWorkspace,
+  addNode,
   setNodeEntryData,
   setNodes,
   setEdges,

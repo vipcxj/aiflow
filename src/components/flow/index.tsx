@@ -13,7 +13,7 @@ import { BaseNode } from './node';
 const AFReactFlow = ReactFlow<AFNode, AFEdge>;
 
 const nodeTypes = {
-  base: BaseNode,
+  default: BaseNode,
 };
 
 export const Flow = () => {

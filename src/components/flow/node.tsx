@@ -145,7 +145,7 @@ export const BaseNode = (props: NodeProps<AFNode>) => {
         >
           <span>{data.title || nodeMeta.title}</span>
         </div>
-        <div className="divider" />
+        <div className="divider mt-0 mb-0" />
         <div className="flex flex-col">
           {sortedInputEntries.map((entry, index) => (
             <BaseNodeRow

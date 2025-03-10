@@ -1,3 +1,5 @@
+import type { RecommandLevel } from './enum';
+
 /**
  * Type definitions for AIFlow node system
  * 
@@ -122,6 +124,8 @@ export type StringType = {
   name: 'string';
   enum?: string[];
   pattern?: string;
+  lenMin?: number;
+  lenMax?: number;
   default?: string;
 };
 
@@ -170,15 +174,6 @@ export type NodeEntryType =
   | PythonObjectType
   | NodeEntryType[];
 
-export const enum RecommandLevel {
-  BROKEN = -2, // show error message when user use this node
-  DEPRECATED = -1, // show warning message when user use this node
-  NORMAL = 0, // show nothing when user use or not use this node
-  RECOMMAND = 1, // show info message when user not use this node
-  SHOULD = 2, // show warning message when user not use this node
-  MUST = 3, // show error message when user not use this node
-};
-
 export type NodeEntry = {
   name: string;
   type: NodeEntryType;
@@ -204,7 +199,7 @@ export type NodeMeta = {
   };
   inputs: NodeEntry[];
   outputs: NodeEntry[];
-  defaultRenderer?: string;
+  defaultRenderer: string;
 };
 
 export type NodeMetaRef = {
@@ -215,10 +210,6 @@ export type NodeMetaRef = {
 export type NodeEntryRuntime = {
   name: string;
   mode: 'handle';
-  target: {
-    node: string;
-    entry: string;
-  };
 } | {
   name: string;
   mode: 'input';

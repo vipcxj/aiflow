@@ -1,5 +1,6 @@
 import { evaluate } from "@/lib/eval";
 import { AnyType, ArrayType, BoolType, DictType, FloatType, FlowData, IntType, NDArrayType, NodeData, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, NodeMetaRef, PythonObjectType, StringType, TorchTensorType } from "./data-type";
+import { AFNode } from "./flow-type";
 
 export function getNodeMeta(flow: FlowData, globalNodeMetas: NodeMeta[], ref: NodeMetaRef): NodeMeta | undefined {
   const nodeMeta = flow.nodeMetas.find(meta => meta.id === ref.id && meta.version === ref.version);
@@ -70,7 +71,10 @@ function assert(condition: boolean, msg: string) {
   }
 }
 
-export function isNodeEntryDataValid(entry: NodeEntry, data: any): boolean {
+export function isNodeEntryDataValid(entry: NodeEntry, data: any, optional: boolean = true): boolean {
+  if (data === undefined || data === null) {
+    return optional;
+  }
   if (isIntNodeEntryType(entry.type) || isFloatNodeEntryType(entry.type)) {
     if (typeof data !== 'number') {
       return false;
@@ -78,7 +82,7 @@ export function isNodeEntryDataValid(entry: NodeEntry, data: any): boolean {
     if (isIntNodeEntryType(entry.type) && !Number.isInteger(data)) {
       return false;
     }
-    if (entry.type.range && (data < entry.type.range[0] || data >= entry.type.range[1])) {
+    if (entry.type.range && (data < entry.type.range[0] || data > entry.type.range[1])) {
       return false;
     }
     if (entry.type.enum && !entry.type.enum.includes(data)) {
@@ -90,6 +94,12 @@ export function isNodeEntryDataValid(entry: NodeEntry, data: any): boolean {
     }
   } else if (isStringNodeEntryType(entry.type)) {
     if (typeof data !== 'string') {
+      return false;
+    }
+    if (entry.type.lenMin && data.length < entry.type.lenMin) {
+      return false;
+    }
+    if (entry.type.lenMax && data.length > entry.type.lenMax) {
       return false;
     }
     if (entry.type.pattern && !new RegExp(entry.type.pattern).test(data)) {
@@ -113,45 +123,36 @@ export function isNodeEntryDataValid(entry: NodeEntry, data: any): boolean {
 }
 
 /**
- * get the default value of the entry type. if undefined returned, it means no valid value for this type.
+ * get the default value of the entry type. maybe not valid.
  * @param type entry type
  * @returns default value of the entry type
  */
-export function getIntNodeEntryDefaultData(type: IntType): number | undefined {
-  if (type.default !== undefined) {
-    return type.default;
-  } else if (type.enum && type.enum.length > 0) {
-    if (type.range) {
-      for (const e of type.enum) {
-        if (Number.isInteger(e) && e >= type.range[0] && e < type.range[1]) {
-          return e;
-        }
-      }
-      return undefined;
-    } else {
-      for (const e of type.enum) {
-        if (Number.isInteger(e)) {
-          return e;
-        }
-      }
-      return undefined;
+export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryType): any {
+  let defaultValue: any;
+  if ("default" in entryType && entryType.default !== undefined && entryType.default !== null) {
+    defaultValue = entryType.default;
+  } else if ("enum" in entryType && entryType.enum && entryType.enum.length > 0) {
+    defaultValue = entryType.enum[0];
+  } else if ("range" in entryType && entryType.range) {
+    defaultValue = entryType.range[0];
+    if (isIntNodeEntryType(entryType)) {
+      defaultValue = Math.ceil(defaultValue);
     }
-  } else if (type.range) {
-    const v = Math.ceil(type.range[0]);
-    if (v < type.range[1]) {
-      return type.range[0];
-    } else {
-      return undefined;
-    }
-  } else {
-    return 0;
+  } else if (isIntNodeEntryType(entryType) || isFloatNodeEntryType(entryType)) {
+    defaultValue = 0;
+  } else if (isStringNodeEntryType(entryType)) {
+    defaultValue = '';
+  } else if (isBoolNodeEntryType(entryType)) {
+    defaultValue = false;
+  } else if (isDictNodeEntryType(entryType)) {
+    defaultValue = {};
+  } else if (isArrayNodeEntryType(entryType)) {
+    defaultValue = [];
+  } else if (isUnionNodeEntryType(entryType) && entryType.length > 0) {
+    return getNodeEntryDefaultData(entry, entryType[0]);
   }
+  return defaultValue;
 }
-
-export function getFloatNodeEntryDefaultData(type: FloatType): number | undefined {
-
-}
-
 
 export type NodeEntryData = {
   meta: NodeEntry;
@@ -174,11 +175,17 @@ export function sortInputNodeEntries(entries: NodeEntry[], runtimeEntries: NodeE
   }).map(({ meta, runtime }) => ({ meta, runtime }));
 }
 
-function createEntryRuntime(entry: NodeEntry): NodeEntryRuntime {
-  if (isNodeEntrySupportInput(entry)) {
+function createEntryRuntime(entry: NodeEntry, input: boolean): NodeEntryRuntime {
+  if (input && isNodeEntrySupportInput(entry)) {
     return {
+      name: entry.name,
       mode: 'input',
-      data: undefined,
+      data: getNodeEntryDefaultData(entry, entry.type),
+    };
+  } else {
+    return {
+      name: entry.name,
+      mode: 'handle',
     };
   }
 }
@@ -192,16 +199,22 @@ export function createNodeData(meta: NodeMeta, x: number, y: number, idGenerator
       version: meta.version,
     },
     title: meta.title,
+    collapsed: false,
+    nativeMode: 'prefer',
+    renderer: meta.defaultRenderer,
     position: { x, y },
-    inputs: meta.inputs.map(entry => ({
-      name: entry.name,
-      type: entry.type,
-      data: entry.type.default,
-    })),
-    outputs: meta.outputs.map(entry => ({
-      name: entry.name,
-      type: entry.type,
-      data: entry.type.default,
-    })),
+    inputs: meta.inputs.map(entry => createEntryRuntime(entry, true)),
+    outputs: meta.outputs.map(entry => createEntryRuntime(entry, false)),
+  };
+}
+
+export function createAFNodeFromData(data: NodeData): AFNode {
+  return {
+    id: data.id,
+    position: {
+      x: data.position.x,
+      y: data.position.y,
+    },
+    data,
   };
 }
