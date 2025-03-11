@@ -1,5 +1,5 @@
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { addNode, selectGlobalNodeMetas } from '@/lib/slices/workspace-slice';
+import { useAppDispatch } from "@/lib/hooks";
+import { addNode } from '@/lib/slices/workspace-slice';
 import { useOpenContextMenu } from "../context-menu/hook";
 import { useCallback } from "react";
 import { ContextMenuState } from "../context-menu/type";

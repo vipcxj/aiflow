@@ -4,6 +4,7 @@ import { ChevronDown } from "./chevron-down";
 import { ChevronLeft } from "./chevron-left";
 import { ChevronRight } from "./chevron-right";
 import { ChevronUp } from "./chevron-up";
+import { Circle } from "./circle";
 import { CpuChip } from "./cpu-chip";
 import { LockClosed } from "./lock-closed";
 import { LockOpen } from "./lock-open";
@@ -19,6 +20,7 @@ export type IconName =
   | 'chevron-left'
   | 'chevron-right'
   | 'chevron-up'
+  | 'circle'
   | 'cpu-chip'
   | 'lock-closed'
   | 'lock-open'
@@ -45,6 +47,8 @@ export const Icon = ({ name, className }: IconProps) => {
       return <ChevronRight className={className} />;
     case 'chevron-up':
       return <ChevronUp className={className} />;
+    case 'circle':
+      return <Circle className={className} />;
     case 'cpu-chip':
       return <CpuChip className={className} />;
     case 'lock-closed':

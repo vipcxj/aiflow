@@ -1,6 +1,6 @@
 'use client';
-import { Background, ColorMode, Controls, EdgeChange, MiniMap, NodeChange, ReactFlow } from '@xyflow/react'
-import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange, removeNode } from '@/lib/slices/workspace-slice';
+import { Background, ColorMode, Controls, EdgeChange, MiniMap, NodeChange, OnConnect, ReactFlow } from '@xyflow/react'
+import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange, removeNode, addEdge } from '@/lib/slices/workspace-slice';
 
 import '@xyflow/react/dist/base.css';
 import './index.css';
@@ -30,8 +30,8 @@ export const Flow = () => {
       label: 'Delete',
       data: node,
       onClick: (node) => {
-        if (!node || !node.data) return;
-        dispatch(removeNode(node.data.id));
+        if (!node) return;
+        dispatch(removeNode(node.id));
       },
     };
     return [removeNodeMenu as ContextMenuItemMenu<unknown>];
@@ -47,6 +47,9 @@ export const Flow = () => {
   const onEdgesChange = useCallback((changes: EdgeChange<AFEdge>[]) => {
     dispatch(applyEdgesChange(changes));
   }, [dispatch, applyEdgesChange]);
+  const onConnect: OnConnect = useCallback((params) => {
+    dispatch(addEdge(params));
+  }, []);
 
   const { theme } = useTheme(); 
   return (
@@ -57,6 +60,7 @@ export const Flow = () => {
       onNodesChange={onNodesChange}
       edges={edges}
       onEdgesChange={onEdgesChange}
+      onConnect={onConnect}
       nodeTypes={nodeTypes}
       colorMode={theme as ColorMode}
     >

@@ -1,9 +1,9 @@
 "use client";
 
-import { getNodeMeta, isBoolNodeEntryType, isFloatNodeEntryType, isIntNodeEntryType, isNodeEntrySupportInput, sortInputNodeEntries } from "@/data/utils";
+import { isBoolNodeEntryType, isFloatNodeEntryType, isIntNodeEntryType, isNodeEntrySupportInput, sortInputNodeEntries } from "@/data/utils";
 import { AFNode } from "@/data/flow-type";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { selectCurrentFlow, selectGlobalNodeMetas, setNodeEntryData } from "@/lib/slices/workspace-slice";
+import { selectCurrentFlow, selectGlobalNodeMetas, setNodeEntryData, getNodeMeta, selectCurrentWorkspace } from "@/lib/slices/workspace-slice";
 import { Handle, NodeProps, Position } from "@xyflow/react";
 import { NodeEntry, NodeEntryRuntime } from "@/data/data-type";
 import { useCallback } from "react";
@@ -153,10 +153,10 @@ const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntim
 };
 
 export const BaseNode = (props: NodeProps<AFNode>) => {
-  const { data } = props;
-  const flow = useAppSelector(selectCurrentFlow);
+  const { id, data } = props;
+  const workspace = useAppSelector(selectCurrentWorkspace);
   const globalNodeMetas = useAppSelector(selectGlobalNodeMetas);
-  const nodeMeta = getNodeMeta(flow.data, globalNodeMetas, data.meta);
+  const nodeMeta = getNodeMeta(workspace, globalNodeMetas, data.meta);
   if (!nodeMeta) {
     return <ErrorNode error="NodeMeta not found" {...props} />;
   }
@@ -186,7 +186,7 @@ export const BaseNode = (props: NodeProps<AFNode>) => {
           {sortedInputEntries.map((entry, index) => (
             <BaseNodeRow
               key={entry.runtime.name}
-              nodeId={data.id}
+              nodeId={id}
               inputMeta={entry.meta}
               inputRuntime={entry.runtime}
               outputMeta={nodeMeta.outputs[index]}

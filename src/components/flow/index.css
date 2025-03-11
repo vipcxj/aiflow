@@ -7,7 +7,6 @@
   border: none;
 }
 
-
 .react-flow__handle-left {
   top: auto;
   left: auto;
@@ -52,4 +51,8 @@
 .react-flow__node-group:focus-visible {
   outline: none;
   border: none;
+}
+
+.react-flow__edges {
+  z-index: 100;
 }

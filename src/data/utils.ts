@@ -1,14 +1,6 @@
 import { evaluate } from "@/lib/eval";
-import { AnyType, ArrayType, BoolType, DictType, EdgeData, FloatType, FlowData, IntType, NDArrayType, NodeData, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, NodeMetaRef, PythonObjectType, StringType, TorchTensorType } from "./data-type";
+import { AnyType, ArrayType, BoolType, DictType, FloatType, IntType, NDArrayType, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, PythonObjectType, StringType, TorchTensorType } from "./data-type";
 import { AFEdge, AFNode } from "./flow-type";
-
-export function getNodeMeta(flow: FlowData, globalNodeMetas: NodeMeta[], ref: NodeMetaRef): NodeMeta | undefined {
-  const nodeMeta = flow.nodeMetas.find(meta => meta.id === ref.id && meta.version === ref.version);
-  if (nodeMeta) {
-    return nodeMeta;
-  }
-  return globalNodeMetas.find(meta => meta.id === ref.id && meta.version === ref.version);
-}
 
 export function isAnyNodeEntryType(type: NodeEntryType): type is AnyType {
   return !Array.isArray(type) && type.name === 'any';
@@ -190,43 +182,21 @@ function createEntryRuntime(entry: NodeEntry, input: boolean): NodeEntryRuntime 
   }
 }
 
-export function createNodeData(meta: NodeMeta, x: number, y: number, idGenerator: () => string): NodeData {
-  const id = idGenerator();
+export function createNode(id: string, meta: NodeMeta, x: number, y: number): AFNode {
   return {
     id,
-    meta: {
-      id: meta.id,
-      version: meta.version,
-    },
-    title: meta.title,
-    collapsed: false,
-    nativeMode: 'prefer',
-    renderer: meta.defaultRenderer,
     position: { x, y },
-    inputs: meta.inputs.map(entry => createEntryRuntime(entry, true)),
-    outputs: meta.outputs.map(entry => createEntryRuntime(entry, false)),
-  };
-}
-
-export function createAFNodeFromData(data: NodeData): AFNode {
-  return {
-    id: data.id,
-    position: {
-      x: data.position.x,
-      y: data.position.y,
+    data: {
+      meta: {
+        id: meta.id,
+        version: meta.version,
+      },
+      title: meta.title,
+      collapsed: false,
+      nativeMode: 'prefer',
+      renderer: meta.defaultRenderer,
+      inputs: meta.inputs.map(entry => createEntryRuntime(entry, true)),
+      outputs: meta.outputs.map(entry => createEntryRuntime(entry, false)),
     },
-    data,
-  };
-}
-
-export function createNodeDataFromAFNode(node: AFNode): NodeData {
-  return node.data;
-}
-
-export function createEdgeDataFromAFEdge(edge: AFEdge): EdgeData {
-  return {
-    source: edge.source,
-    target: edge.target,
-    data: edge.data,
   };
 }
