@@ -28,7 +28,7 @@ const genMenuItemId = (path: number[]) => {
   return `context-menu-item.${path.join('.')}`;
 };
 
-const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun, menus: JSX.Element[]) => {
+const createMenuItem = (path: number[], item: ContextMenuItem, menuState: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun, menus: JSX.Element[]) => {
   const id = genMenuItemId(path);
   if (isSeparator(item)) {
     return <div key={id} className="divider mt-0 mb-0" />;
@@ -60,7 +60,7 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
       const onClick = () => {
         closeMenu();
         if (item.onClick) {
-          item.onClick(item.data);
+          item.onClick(item.data, menuState);
         }
       };
       return (
@@ -77,7 +77,8 @@ const createMenuItem = (path: number[], item: ContextMenuItem, openSubMenu: Open
   }
 };
 
-const createMenu = (result: JSX.Element[], path: number[], { visible, title, items, position, sideOfParent, ready }: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun) => {
+const createMenu = (result: JSX.Element[], path: number[], menuState: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun) => {
+  const { visible, title, items, position, sideOfParent, ready } = menuState;
   if (!visible)
     return;
   const id = genMenuId(path);
@@ -113,7 +114,7 @@ const createMenu = (result: JSX.Element[], path: number[], { visible, title, ite
       {/* 可滚动的菜单项部分 */}
       <ArrowScrollbar direction="vertical" className="max-h-[calc(24rem-36px)]"> {/* 设置最大高度并允许滚动 */}
         <ul className={cs("menu menu-sm w-full", { 'pt-0': title, 'mt-0': title })}>
-          {items.map((item, i) => createMenuItem([...path, i], item, openSubMenu, closeMenu, result))}
+          {items.map((item, i) => createMenuItem([...path, i], item, menuState, openSubMenu, closeMenu, result))}
         </ul>
       </ArrowScrollbar>
     </div>

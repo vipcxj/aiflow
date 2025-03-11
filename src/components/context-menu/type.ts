@@ -4,14 +4,14 @@ export interface ContextMenuItemSeparator {
     type: 'separator';
 };
 
-export interface ContextMenuItemMenu {
+export interface ContextMenuItemMenu<T = unknown> {
     type: 'menu';
     label: string;
     icon?: string;
     subMenu?: ContextMenuState;
-    data?: unknown;
+    data?: T;
     selected?: boolean;
-    onClick?: (data: unknown) => void;
+    onClick?: (data: T, menuState: ContextMenuState) => void;
 };
 
 export type ContextMenuItem = ContextMenuItemSeparator | ContextMenuItemMenu;

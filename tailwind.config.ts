@@ -1,5 +1,6 @@
-import type { Config } from 'tailwindcss'
-import scrollbarHide from 'tailwind-scrollbar-hide'
+import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
+import scrollbarHide from 'tailwind-scrollbar-hide';
 
 const config: Config = {
   content: [
@@ -69,7 +70,24 @@ const config: Config = {
     },
   },
   darkMode: "selector",
-  plugins: [scrollbarHide],
+  plugins: [
+    scrollbarHide,
+    plugin(function({ addVariant }) {
+      addVariant('flow-node', '.react-flow__node &');
+      addVariant('flow-node-selected', '.react-flow__node.selected &');
+      addVariant('flow-node-focus', '.react-flow__node:focus &');
+      addVariant('flow-node-focus-visible', '.react-flow__node:focus-visible &');
+      addVariant('flow-node-hover', '.react-flow__node:hover &');
+      addVariant('flow-handle', '.react-flow__handle &');
+      addVariant('flow-handle-selected', '.react-flow__handle.selected &');
+      addVariant('flow-handle-focus', '.react-flow__handle:focus &');
+      addVariant('flow-handle-focus-visible', '.react-flow__handle:focus-visible &');
+      addVariant('flow-handle-hover', '.react-flow__handle:hover &');
+      addVariant('flow-handle-connecting', '.react-flow__handle.connecting &');
+      addVariant('flow-handle-connecting-from', '.react-flow__handle.connectingfrom &');
+      addVariant('flow-handle-connecting-to', '.react-flow__handle.connectingto &');
+    }),
+  ],
 };
 
 export default config;

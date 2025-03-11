@@ -7,6 +7,7 @@ import { selectCurrentFlow, selectGlobalNodeMetas, setNodeEntryData } from "@/li
 import { Handle, NodeProps, Position } from "@xyflow/react";
 import { NodeEntry, NodeEntryRuntime } from "@/data/data-type";
 import { useCallback } from "react";
+import { Circle } from "../icons/circle";
 
 export const ErrorNode = (props: NodeProps<AFNode> & { error: string }) => {
   return (
@@ -83,28 +84,58 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
 
 const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntime }: BaseNodeRowProps) => {
   return (
-    <div className="flex flex-col">
-      <div className="inline-flex">
+    <div className="flex flex-col text-xs">
+      <div className="inline-flex justify-between">
         {inputMeta && inputRuntime && (
-          <span className="justify-self-start">
+          <span className="inline-flex items-center ml-1 mr-4">
             {inputRuntime.mode === 'handle' && (
               <Handle
                 type="source"
                 position={Position.Left}
                 id={inputRuntime.name}
-              />
+                style={{
+                  position: 'relative',
+                }}
+              >
+                <Circle className={`
+                  w-4 h-4 pointer-events-none
+                  stroke-[1.5]
+                  text-secondary/70
+                  flow-handle-hover:stroke-3
+                  flow-handle-hover:text-secondary
+                  flow-handle-connecting-from:stroke-3
+                  flow-handle-connecting-from:text-secondary
+                  flow-handle-connecting-to:stroke-3
+                  flow-handle-connecting-to:text-secondary
+                `} />
+              </Handle>
             )}
             {inputMeta.name}
           </span>
         )}
         {outputMeta && outputRuntime && (
-          <span className="justify-self-end">
+          <span className="inline-flex items-center mr-1 ml-4">
             {outputMeta.name}
             <Handle
               type="target"
               position={Position.Right}
               id={outputRuntime.name}
-            />
+              style={{
+                position: 'relative',
+              }}
+            >
+              <Circle className={`
+                w-4 h-4 pointer-events-none
+                stroke-[1.5]
+                text-accent/70
+                flow-handle-hover:stroke-3
+                flow-handle-hover:text-accent
+                flow-handle-connecting-from:stroke-3
+                flow-handle-connecting-from:text-accent
+                flow-handle-connecting-to:stroke-3
+                flow-handle-connecting-to:text-accent
+              `} />
+            </Handle>
           </span>
         )}
       </div>
@@ -137,16 +168,21 @@ export const BaseNode = (props: NodeProps<AFNode>) => {
           flex flex-col
           bg-base-100
           min-w-32
-          min-h-48
+          rounded-t-lg
+          shadow-lg
+          flow-node-hover:ring-2
+          flow-node-hover:ring-primary/80
+          flow-node-selected:ring-2
+          flow-node-selected:ring-primary/80
         `}
       >
         <div
-          className="flex"
+          className="flex pl-2 pr-2 pt-2"
         >
-          <span>{data.title || nodeMeta.title}</span>
+          <span className="text-xs text-base-content/70">{data.title || nodeMeta.title}</span>
         </div>
         <div className="divider mt-0 mb-0" />
-        <div className="flex flex-col">
+        <div className="flex flex-col pb-3">
           {sortedInputEntries.map((entry, index) => (
             <BaseNodeRow
               key={entry.runtime.name}

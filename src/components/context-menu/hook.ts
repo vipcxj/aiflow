@@ -128,9 +128,21 @@ export function adjustContextMenu(parentId: string, id: string, x: number, y: nu
   }, 1);
 }
 
-export function useOpenContextMenu<T>(title: string, items: ContextMenuItem[]) {
+export type ContextMenuItemsEnchancer<C> = {
+  context?: C;
+  enchance: (items: ContextMenuItem[], context?: C) => ContextMenuItem[];
+};
+
+export function useContextMenuItemsEnchancer<C>(enchanceFun: ContextMenuItemsEnchancer<C>['enchance'], deps: any[]): ContextMenuItemsEnchancer<C> {
+  const enchance = useCallback(enchanceFun, deps);
+  return { enchance };
+}
+
+export function useOpenContextMenu<T, C = any>(title: string, items: ContextMenuItem[], enchancer?: ContextMenuItemsEnchancer<C>) {
   const dispatch = useAppDispatch();
   const onContextMenu = useCallback((e: React.MouseEvent<T>) => {
+    // 阻止事件冒泡和默认行为
+    e.stopPropagation();
     e.preventDefault();
 
     // 暂存初始位置
@@ -138,17 +150,19 @@ export function useOpenContextMenu<T>(title: string, items: ContextMenuItem[]) {
     const y = e.pageY;
 
     const updatePosition = (position: { x: number, y: number }, side?: 'left' | 'right', ready?: boolean) => {
-      dispatch(openContextMenu({ title, items, position, ready: ready || false }));
+      const enchancedItems = enchancer ? enchancer.enchance(items, enchancer.context) : items;
+      dispatch(openContextMenu({ title, items: enchancedItems, position, ready: ready || false }));
     };
 
     const position = { x: e.pageX, y: e.pageY };
-    dispatch(openContextMenu({ title, items, position, ready: false }));
+    const enchancedItems = enchancer ? enchancer.enchance(items, enchancer.context) : items;
+    dispatch(openContextMenu({ title, items: enchancedItems, position, ready: false }));
 
     // 异步调整位置 - 等待菜单元素渲染后再计算
     setTimeout(() => {
       adjustContextMenu('', 'context-menu', x, y, updatePosition);
     }, 0);
-  }, [dispatch, title, items]);
+  }, [dispatch, title, items, enchancer]);
   useEffect(() => {
     // 处理点击事件，只有在点击菜单外部时关闭
     const handleClickOutside = (event: MouseEvent) => {

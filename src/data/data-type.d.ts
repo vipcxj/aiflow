@@ -236,6 +236,7 @@ export type NodeData = {
 };
 
 export type EdgeData = {
+  id: string;
   sourceNode: string;
   sourceEntry: string;
   targetNode: string;

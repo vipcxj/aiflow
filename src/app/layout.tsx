@@ -5,6 +5,7 @@ import StoreProvider from "./StoreProvider";
 import MainLayout from "@/components/layout";
 import { ThemeProvider } from "@/components/theme";
 import { ContextMenu } from "@/components/context-menu";
+import { ReactFlowProvider } from "@xyflow/react";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,10 +34,12 @@ export default function RootLayout({
       >
         <StoreProvider>
           <ThemeProvider>
-            <MainLayout>
-              {children}
-            </MainLayout>
-            <ContextMenu />
+            <ReactFlowProvider>
+              <MainLayout>
+                {children}
+              </MainLayout>
+              <ContextMenu />
+            </ReactFlowProvider>
           </ThemeProvider>
         </StoreProvider>
       </body>

@@ -1,6 +1,6 @@
 import { evaluate } from "@/lib/eval";
-import { AnyType, ArrayType, BoolType, DictType, FloatType, FlowData, IntType, NDArrayType, NodeData, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, NodeMetaRef, PythonObjectType, StringType, TorchTensorType } from "./data-type";
-import { AFNode } from "./flow-type";
+import { AnyType, ArrayType, BoolType, DictType, EdgeData, FloatType, FlowData, IntType, NDArrayType, NodeData, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, NodeMetaRef, PythonObjectType, StringType, TorchTensorType } from "./data-type";
+import { AFEdge, AFNode } from "./flow-type";
 
 export function getNodeMeta(flow: FlowData, globalNodeMetas: NodeMeta[], ref: NodeMetaRef): NodeMeta | undefined {
   const nodeMeta = flow.nodeMetas.find(meta => meta.id === ref.id && meta.version === ref.version);
@@ -216,5 +216,17 @@ export function createAFNodeFromData(data: NodeData): AFNode {
       y: data.position.y,
     },
     data,
+  };
+}
+
+export function createNodeDataFromAFNode(node: AFNode): NodeData {
+  return node.data;
+}
+
+export function createEdgeDataFromAFEdge(edge: AFEdge): EdgeData {
+  return {
+    source: edge.source,
+    target: edge.target,
+    data: edge.data,
   };
 }

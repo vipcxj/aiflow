@@ -1,14 +1,17 @@
 'use client';
 import { Background, ColorMode, Controls, EdgeChange, MiniMap, NodeChange, ReactFlow } from '@xyflow/react'
-import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange } from '@/lib/slices/workspace-slice';
+import { selectNodes, selectEdges, applyNodesChange, applyEdgesChange, removeNode } from '@/lib/slices/workspace-slice';
 
-import '@xyflow/react/dist/style.css';
+import '@xyflow/react/dist/base.css';
+import './index.css';
 import { useTheme } from 'next-themes';
 import { useGroundContextMenu } from './context-menu';
 import { useAppDispatch, useAppSelector } from '@/lib/hooks';
 import { AFEdge, AFNode } from '@/data/flow-type';
-import { useCallback } from 'react';
+import { MouseEvent, useCallback } from 'react';
 import { BaseNode } from './node';
+import { useContextMenuItemsEnchancer, useOpenContextMenu } from '../context-menu/hook';
+import { ContextMenuItemMenu } from '../context-menu/type';
 
 const AFReactFlow = ReactFlow<AFNode, AFEdge>;
 
@@ -17,10 +20,27 @@ const nodeTypes = {
 };
 
 export const Flow = () => {
-  const { onContextMenu } = useGroundContextMenu();
   const nodes = useAppSelector(selectNodes);
   const edges = useAppSelector(selectEdges);
   const dispatch = useAppDispatch();
+  const { onContextMenu } = useGroundContextMenu();
+  const enchancer = useContextMenuItemsEnchancer<AFNode>((_items, node) => {
+    const removeNodeMenu: ContextMenuItemMenu<AFNode> = {
+      type: 'menu',
+      label: 'Delete',
+      data: node,
+      onClick: (node) => {
+        if (!node || !node.data) return;
+        dispatch(removeNode(node.data.id));
+      },
+    };
+    return [removeNodeMenu as ContextMenuItemMenu<unknown>];
+  }, [dispatch, removeNode]);
+  const { onContextMenu: _onNodeContextMenu } = useOpenContextMenu('', [], enchancer);
+  const onNodeContextMenu = useCallback((e: MouseEvent, node: AFNode) => {
+    enchancer.context = node;
+    _onNodeContextMenu(e);
+  }, [_onNodeContextMenu, enchancer]);
   const onNodesChange = useCallback((changes: NodeChange<AFNode>[]) => {
     dispatch(applyNodesChange(changes));
   }, [dispatch, applyNodesChange]);
@@ -31,7 +51,8 @@ export const Flow = () => {
   const { theme } = useTheme(); 
   return (
     <AFReactFlow
-      onContextMenu={onContextMenu} 
+      onContextMenu={onContextMenu}
+      onNodeContextMenu={onNodeContextMenu}
       nodes={nodes}
       onNodesChange={onNodesChange}
       edges={edges}
