@@ -158,7 +158,7 @@ function generateUniqueTitle(workspaces: WorkspaceState[]): string {
   return title;
 }
 
-function _newWorkspace(state: WorkspacesState): void {
+const __newWorkspace = (state: WorkspacesState): void => {
   const title = generateUniqueTitle(state.workspaces);
   const id = `ws-${state.nextWSId++}`;
   state.workspaces.push({
@@ -173,29 +173,35 @@ function _newWorkspace(state: WorkspacesState): void {
     dirty: false,
   });
   state.current = id;
-}
+};
 
-function _closeWorkspace(state: WorkspacesState, action: PayloadAction<string>): void {
+const _newWorkspace = workspacesAdapter.undoableReducer(__newWorkspace);
+
+const __closeWorkspace = (state: WorkspacesState, action: PayloadAction<string>): void => {
   const index = state.workspaces.findIndex(ws => ws.id === action.payload);
   if (index === -1) {
     return;
   }
   state.workspaces.splice(index, 1);
   if (state.workspaces.length === 0) {
-    _newWorkspace(state);
+    __newWorkspace(state);
   }
   if (state.current === action.payload) {
     state.current = state.workspaces[0].id;
   }
-}
+};
 
-function _setCurrentWorkspace(state: WorkspacesState, action: PayloadAction<string>) {
+const _closeWorkspace = workspacesAdapter.undoableReducer(__closeWorkspace);
+
+const __setCurrentWorkspace = (state: WorkspacesState, action: PayloadAction<string>): void => {
   if (state.workspaces.some(ws => ws.id === action.payload)) {
     state.current = action.payload;
   }
-}
+};
 
-function _addNode(state: WorkspacesState, action: PayloadAction<PayloadAddNewNode>) {
+const _setCurrentWorkspace = workspacesAdapter.undoableReducer(__setCurrentWorkspace);
+
+const _addNode = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<PayloadAddNewNode>): void => {
   const workspace = currentWorkspace(state);
   const flow = currentFlow(workspace);
   const nodeMeta = getNodeMeta(workspace, state.nodeMetas, action.payload.meta);
@@ -206,9 +212,9 @@ function _addNode(state: WorkspacesState, action: PayloadAction<PayloadAddNewNod
   const node = createNode(id, nodeMeta, action.payload.x, action.payload.y);
   flow.nodes.push(node);
   markDirty(state, true);
-}
+});
 
-function _removeNode(state: WorkspacesState, action: PayloadAction<string>) {
+const _removeNode = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<string>) => {
   const flow = currentFlowFromWS(state);
   const index = flow.nodes.findIndex(node => node.id === action.payload);
   if (index === -1) {
@@ -219,9 +225,9 @@ function _removeNode(state: WorkspacesState, action: PayloadAction<string>) {
     return edge.source !== action.payload && edge.target !== action.payload;
   });
   markDirty(state, true);
-}
+});
 
-function _setNodeEntryData(state: WorkspacesState, action: PayloadAction<PayloadSetNodeEntryData>) {
+const _setNodeEntryData = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<PayloadSetNodeEntryData>) => {
   const flow = currentFlowFromWS(state);
   const node = getNodeData(flow, action.payload.nodeId);
   if (!node) {
@@ -231,9 +237,9 @@ function _setNodeEntryData(state: WorkspacesState, action: PayloadAction<Payload
   if (entry && entry.mode === 'input') {
     entry.data = action.payload.data;
   }
-}
+});
 
-function _addEdge(state: WorkspacesState, action: PayloadAction<Connection>) {
+const _addEdge = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<Connection>) => {
   const workspace = currentWorkspace(state);
   const flow = currentFlow(workspace);
   const id = `edge-${workspace.nextEdgeId++}`;
@@ -242,31 +248,31 @@ function _addEdge(state: WorkspacesState, action: PayloadAction<Connection>) {
     ...action.payload,
   }, flow.edges);
   markDirty(state, true);
-}
+});
 
-function _setNodes(state: WorkspacesState, action: PayloadAction<AFNode[]>) {
+const _setNodes = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<AFNode[]>) => {
   const flow = currentFlowFromWS(state);
   flow.nodes = action.payload;
   markDirty(state, true);
-}
+});
 
-function _setEdges(state: WorkspacesState, action: PayloadAction<AFEdge[]>) {
+const _setEdges = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<AFEdge[]>) => {
   const flow = currentFlowFromWS(state);
   flow.edges = action.payload;
   markDirty(state, true);
-}
+});
 
-function _applyNodesChange(state: WorkspacesState, action: PayloadAction<NodeChange<AFNode>[]>) {
+const _applyNodesChange = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<NodeChange<AFNode>[]>) => {
   const flow = currentFlowFromWS(state);
   flow.nodes = applyNodeChanges(action.payload, flow.nodes);
   markDirty(state, true);
-}
+});
 
-function _applyEdgesChange(state: WorkspacesState, action: PayloadAction<EdgeChange<AFEdge>[]>) {
+const _applyEdgesChange = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<EdgeChange<AFEdge>[]>) => {
   const flow = currentFlowFromWS(state);
   flow.edges = applyEdgeChanges(action.payload, flow.edges);
   markDirty(state, true);
-}
+});
 
 const isUndoable = (action: PayloadAction) => {
   return true;
@@ -276,15 +282,15 @@ export const flowSlice = createSlice({
   name: 'flow',
   initialState,
   reducers: (create) => ({
-    newWorkspace: create.reducer(workspacesAdapter.undoableReducer(_newWorkspace)),
-    closeWorkspace: create.reducer(workspacesAdapter.undoableReducer(_closeWorkspace)),
-    setCurrentWorkspace: create.reducer(workspacesAdapter.undoableReducer(_setCurrentWorkspace)),
-    addNode: create.reducer(workspacesAdapter.undoableReducer(_addNode)),
-    removeNode: create.reducer(workspacesAdapter.undoableReducer(_removeNode)),
-    setNodeEntryData: create.reducer(workspacesAdapter.undoableReducer(_setNodeEntryData)),
-    addEdge: create.reducer(workspacesAdapter.undoableReducer(_addEdge)),
-    setNodes: create.reducer(workspacesAdapter.undoableReducer(_setNodes)),
-    setEdges: create.reducer(workspacesAdapter.undoableReducer(_setEdges)),
+    newWorkspace: create.reducer(_newWorkspace),
+    closeWorkspace: create.reducer<string>(_closeWorkspace),
+    setCurrentWorkspace: create.reducer<string>(_setCurrentWorkspace),
+    addNode: create.reducer<PayloadAddNewNode>(_addNode),
+    removeNode: create.reducer<string>(_removeNode),
+    setNodeEntryData: create.reducer<PayloadSetNodeEntryData>(_setNodeEntryData),
+    addEdge: create.reducer<Connection>(_addEdge),
+    setNodes: create.reducer<AFNode[]>(_setNodes),
+    setEdges: create.reducer<AFEdge[]>(_setEdges),
     applyNodesChange: create.preparedReducer(
       (changes: NodeChange<AFNode>[]) => {
         if (changes.length === 1) {
@@ -300,9 +306,9 @@ export const flowSlice = createSlice({
           return { payload: changes };
         }
       },
-      workspacesAdapter.undoableReducer(_applyNodesChange),
+      _applyNodesChange,
     ),
-    applyEdgesChange: create.reducer(workspacesAdapter.undoableReducer(_applyEdgesChange)),
+    applyEdgesChange: create.reducer<EdgeChange<AFEdge>[]>(_applyEdgesChange),
     undo: workspacesAdapter.undo,
     redo: workspacesAdapter.redo,
     clearHistory: workspacesAdapter.clearHistory,
