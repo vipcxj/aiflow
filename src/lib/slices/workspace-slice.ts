@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { buildCreateHistoryAdapter, createHistoryAdapter } from 'history-adapter/redux';
 import type {
   NodeChange,
   EdgeChange,
@@ -13,6 +14,8 @@ import type { NodeData, NodeMeta, NodeMetaRef } from '@/data/data-type';
 import type { AFNode, AFEdge } from '@/data/flow-type';
 import { createNode } from '@/data/utils';
 import { globalNodeMetas } from '@/data/nodes';
+import { useAppDispatch } from '../hooks';
+import { useEffect } from 'react';
 
 export type FlowState = {
   nodes: AFNode[];
@@ -44,9 +47,7 @@ export type WorkspaceState = {
   title: string;
   filePath: string;
   main: FlowState;
-  embeddedNodeImpls: {
-    [key: string]: EmbeddedNodeImpl;
-  };
+  embeddedNodeImpls: EmbeddedNodeImpl[];
   path: string[];
   dirty: boolean;
 };
@@ -66,14 +67,17 @@ function createEmptyFlow(): FlowState {
 }
 
 export function getNodeMeta(workspace: WorkspaceState, globalNodeMetas: NodeMeta[], ref: NodeMetaRef): NodeMeta | undefined {
-  const nodeMeta = workspace.embeddedNodeImpls[ref.id]?.meta;
+  const nodeMeta = workspace.embeddedNodeImpls.find(impl => impl.meta.id === ref.id && impl.meta.version === ref.version)?.meta;
   if (nodeMeta && nodeMeta.version === ref.version) {
     return nodeMeta;
   }
   return globalNodeMetas.find(meta => meta.id === ref.id && meta.version === ref.version);
 }
 
-export const initialState: WorkspacesState = {
+const workspacesAdapter = createHistoryAdapter<WorkspacesState>({ limit: 20 });
+const { selectPresent, ...historySelectors } = workspacesAdapter.getSelectors();
+
+const rawInitialState: WorkspacesState = {
   nextWSId: 1,
   current: 'ws-0',
   workspaces: [{
@@ -83,12 +87,14 @@ export const initialState: WorkspacesState = {
     title: 'Untitled-1',
     filePath: '',
     main: createEmptyFlow(),
-    embeddedNodeImpls: {},
+    embeddedNodeImpls: [],
     path: [],
     dirty: false,
   }],
   nodeMetas: globalNodeMetas,
 };
+
+export const initialState = workspacesAdapter.getInitialState(rawInitialState);
 
 type PayloadSetNodeEntryData = {
   nodeId: string;
@@ -107,12 +113,28 @@ function currentWorkspace(state: WorkspacesState) {
   return state.workspaces.find(ws => ws.id === state.current)!;
 }
 
+function parsePathName(name: string): { id: string, version: string } {
+  const lastPipeIndex = name.lastIndexOf('|');
+  
+  // 如果没有找到 '|' 字符，返回默认值
+  if (lastPipeIndex === -1) {
+    return { id: name, version: '' };
+  }
+  
+  // 根据最后一个 '|' 分割字符串
+  const id = name.substring(0, lastPipeIndex);
+  const version = name.substring(lastPipeIndex + 1);
+  
+  return { id, version };
+}
+
 function currentFlow(state: WorkspaceState): FlowState {
   if (state.path.length === 0) {
     return state.main;
   }
   const name = state.path[state.path.length - 1];
-  return state.embeddedNodeImpls[name].impl;
+  const { id, version } = parsePathName(name);
+  return state.embeddedNodeImpls.find(impl => impl.meta.id === id && impl.meta.version === version)?.impl!;
 }
 
 function currentFlowFromWS(state: WorkspacesState): FlowState {
@@ -146,7 +168,7 @@ function _newWorkspace(state: WorkspacesState): void {
     title,
     filePath: '',
     main: createEmptyFlow(),
-    embeddedNodeImpls: {},
+    embeddedNodeImpls: [],
     path: [],
     dirty: false,
   });
@@ -246,31 +268,55 @@ function _applyEdgesChange(state: WorkspacesState, action: PayloadAction<EdgeCha
   markDirty(state, true);
 }
 
+const isUndoable = (action: PayloadAction) => {
+  return true;
+}
+
 export const flowSlice = createSlice({
   name: 'flow',
   initialState,
   reducers: (create) => ({
-    // @ts-expect-error - TS2589: Type instantiation is excessively deep
-    newWorkspace: create.reducer(_newWorkspace),
-    closeWorkspace: create.reducer(_closeWorkspace),
-    setCurrentWorkspace: create.reducer(_setCurrentWorkspace),
-    addNode: create.reducer(_addNode),
-    removeNode: create.reducer(_removeNode),
-    setNodeEntryData: create.reducer(_setNodeEntryData),
-    addEdge: create.reducer(_addEdge),
-    setNodes: create.reducer(_setNodes),
-    setEdges: create.reducer(_setEdges),
-    applyNodesChange: create.reducer(_applyNodesChange),
-    applyEdgesChange: create.reducer(_applyEdgesChange),
+    newWorkspace: create.reducer(workspacesAdapter.undoableReducer(_newWorkspace)),
+    closeWorkspace: create.reducer(workspacesAdapter.undoableReducer(_closeWorkspace)),
+    setCurrentWorkspace: create.reducer(workspacesAdapter.undoableReducer(_setCurrentWorkspace)),
+    addNode: create.reducer(workspacesAdapter.undoableReducer(_addNode)),
+    removeNode: create.reducer(workspacesAdapter.undoableReducer(_removeNode)),
+    setNodeEntryData: create.reducer(workspacesAdapter.undoableReducer(_setNodeEntryData)),
+    addEdge: create.reducer(workspacesAdapter.undoableReducer(_addEdge)),
+    setNodes: create.reducer(workspacesAdapter.undoableReducer(_setNodes)),
+    setEdges: create.reducer(workspacesAdapter.undoableReducer(_setEdges)),
+    applyNodesChange: create.preparedReducer(
+      (changes: NodeChange<AFNode>[]) => {
+        if (changes.length === 1) {
+          const change = changes[0];
+          if (change.type === 'position') {
+            return { payload: changes, meta: { undoable: !change.dragging } };
+          } else if (change.type === 'dimensions') {
+            return { payload: changes, meta: { undoable: !change.resizing } };
+          } else {
+            return { payload: changes };
+          }
+        } else {
+          return { payload: changes };
+        }
+      },
+      workspacesAdapter.undoableReducer(_applyNodesChange),
+    ),
+    applyEdgesChange: create.reducer(workspacesAdapter.undoableReducer(_applyEdgesChange)),
+    undo: workspacesAdapter.undo,
+    redo: workspacesAdapter.redo,
+    clearHistory: workspacesAdapter.clearHistory,
+    reset: create.reducer(() => initialState),
   }),
   selectors: {
-    selectWorkspaces: (state) => state.workspaces,
-    selectCurrentWorkspaceId: (state) => state.current,
-    selectCurrentWorkspace: (state) => currentWorkspace(state),
-    selectCurrentFlow: (state) => currentFlowFromWS(state),
-    selectNodes: (state) => currentFlowFromWS(state).nodes,
-    selectEdges: (state) => currentFlowFromWS(state).edges,
-    selectGlobalNodeMetas: (state) => state.nodeMetas,
+    ...historySelectors,
+    selectWorkspaces: (state) => selectPresent(state).workspaces,
+    selectCurrentWorkspaceId: (state) => selectPresent(state).current,
+    selectCurrentWorkspace: (state) => currentWorkspace(selectPresent(state)),
+    selectCurrentFlow: (state) => currentFlowFromWS(selectPresent(state)),
+    selectNodes: (state) => currentFlowFromWS(selectPresent(state)).nodes,
+    selectEdges: (state) => currentFlowFromWS(selectPresent(state)).edges,
+    selectGlobalNodeMetas: (state) => selectPresent(state).nodeMetas,
   },
 });
 
@@ -285,7 +331,11 @@ export const {
   setNodes,
   setEdges,
   applyNodesChange,
-  applyEdgesChange
+  applyEdgesChange,
+  undo,
+  redo,
+  clearHistory,
+  reset,
 } = flowSlice.actions;
 export const {
   selectWorkspaces,
@@ -296,3 +346,33 @@ export const {
   selectEdges,
   selectGlobalNodeMetas,
 } = flowSlice.selectors;
+
+export const useUndo = () => {
+  const dispatch = useAppDispatch();
+  useEffect(() => {
+    const handleUndo = (e: KeyboardEvent) => {
+      if (e.key === 'z' && e.ctrlKey) {
+        dispatch(undo());
+      }
+    };
+    window.addEventListener('keydown', handleUndo);
+    return () => {
+      window.removeEventListener('keydown', handleUndo);
+    };
+  }, [dispatch]);
+} 
+
+export const useRedo = () => {
+  const dispatch = useAppDispatch();
+  useEffect(() => {
+    const handleRedo = (e: KeyboardEvent) => {
+      if (e.key === 'y' && e.ctrlKey) {
+        dispatch(redo());
+      }
+    };
+    window.addEventListener('keydown', handleRedo);
+    return () => {
+      window.removeEventListener('keydown', handleRedo);
+    };
+  }, [dispatch]);
+}

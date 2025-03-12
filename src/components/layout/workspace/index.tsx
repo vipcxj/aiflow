@@ -1,6 +1,5 @@
 'use client';
 
-import { useOpenContextMenu } from "@/components/context-menu/hook";
 import { HTMLProps } from "react";
 
 export const Workspace = ({ children, ...props }: HTMLProps<HTMLDivElement>) => {

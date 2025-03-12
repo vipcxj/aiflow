@@ -1,7 +1,7 @@
 import { useAppDispatch } from "@/lib/hooks";
 import { useCallback, useEffect } from "react"
 import { closeContextMenu, openContextMenu } from "@/lib/slices/context-menu-slice";
-import { ContextMenuItem } from "./type";
+import { ContextMenuItem, ContextMenuItemMenu, ContextMenuState } from "./type";
 
 export function getAllContextMenus(): HTMLElement[] {
   // 获取菜单根元素
@@ -138,6 +138,26 @@ export function useContextMenuItemsEnchancer<C>(enchanceFun: ContextMenuItemsEnc
   return { enchance };
 }
 
+function cleanContextMenuItem(item: ContextMenuItem): ContextMenuItem | undefined {
+  if (item.type === 'separator') return item;
+  if (!item.subMenu) {
+    return !!item.onClick ? item : undefined;
+  } else {
+    item.subMenu.items = cleanContextItems(item.subMenu.items);
+    if (item.subMenu.items.length === 0) return undefined;
+    return item;
+  }
+}
+
+function cleanContextItems(items: ContextMenuItem[]): ContextMenuItem[] {
+  items = items.filter(item => cleanContextMenuItem(item));
+  if (items.length === 0) return [];
+  if (items.some(item => item.type !== 'separator')) {
+    return items;
+  }
+  return [];
+}
+
 export function useOpenContextMenu<T, C = any>(title: string, items: ContextMenuItem[], enchancer?: ContextMenuItemsEnchancer<C>) {
   const dispatch = useAppDispatch();
   const onContextMenu = useCallback((e: React.MouseEvent<T>) => {
@@ -149,13 +169,14 @@ export function useOpenContextMenu<T, C = any>(title: string, items: ContextMenu
     const x = e.pageX;
     const y = e.pageY;
 
+    const enchancedItems = cleanContextItems(enchancer ? enchancer.enchance(items, enchancer.context) : items);
+    if (enchancedItems.length === 0) return;
+
     const updatePosition = (position: { x: number, y: number }, side?: 'left' | 'right', ready?: boolean) => {
-      const enchancedItems = enchancer ? enchancer.enchance(items, enchancer.context) : items;
       dispatch(openContextMenu({ title, items: enchancedItems, position, ready: ready || false }));
     };
 
     const position = { x: e.pageX, y: e.pageY };
-    const enchancedItems = enchancer ? enchancer.enchance(items, enchancer.context) : items;
     dispatch(openContextMenu({ title, items: enchancedItems, position, ready: false }));
 
     // 异步调整位置 - 等待菜单元素渲染后再计算

@@ -8,6 +8,7 @@ export const initialState: ContextMenuState = {
   title: "",
   items: [],
   visible: false,
+  level: 0,
   position: { x: 0, y: 0 },
   ready: false,
 };
@@ -34,6 +35,7 @@ const closeMenu = (state: ContextMenuState, excludeRoot: boolean = false, exclud
   }
   if (!excludeRoot) {
     state.visible = false;
+    state.level = 0;
     state.position = { x: 0, y: 0 };
     state.sideOfParent = undefined;
     state.ready = false;
@@ -59,25 +61,33 @@ export const contextMenuSlice = createAppSlice({
       state.items = action.payload.items;
       state.position = action.payload.position;
       state.visible = true;
+      state.level = 0;
       state.ready = action.payload.ready;
     }),
     openContextSubMenu: create.reducer((state, action: PayloadAction<PayloadOpenContextSubMenu>) => {
       let items = state.items;
       const path = action.payload.path;
       closeMenu(state, true, path);
-      let item: ContextMenuItem | undefined = undefined;
-      for (let i = 0; i < path.length; i++) {
-        item = items[path[i]];
-        if (isMenu(item) && item.subMenu) {
-          items = item.subMenu.items;
+      if (path.length > 0) {
+        state.level = path.length - 1;
+        let item: ContextMenuItem | undefined = undefined;
+        for (let i = 0; i < path.length; i++) {
+          item = items[path[i]];
+          if (isMenu(item) && item.subMenu) {
+            item.subMenu.level = Math.max(path.length - i - 2, 0);
+            items = item.subMenu.items;
+          } else {
+            console.error("Invalid path");
+            return;
+          }
         }
-      }
-      if (item && isMenu(item) && item.subMenu) {
-        item.selected = true;
-        item.subMenu.visible = true;
-        item.subMenu.position = action.payload.position;
-        item.subMenu.sideOfParent = action.payload.sideOfParent;
-        item.subMenu.ready = action.payload.ready;
+        if (item && isMenu(item) && item.subMenu) {
+          item.selected = true;
+          item.subMenu.visible = true;
+          item.subMenu.position = action.payload.position;
+          item.subMenu.sideOfParent = action.payload.sideOfParent;
+          item.subMenu.ready = action.payload.ready;
+        }
       }
     }),
     closeContextMenu: create.reducer((state) => {

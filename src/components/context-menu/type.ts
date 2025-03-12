@@ -20,6 +20,7 @@ export type ContextMenuState = {
     title?: string;
     items: ContextMenuItem[];
     visible?: boolean;
+    level?: number;
     position?: { x: number, y: number };
     sideOfParent?: 'left' | 'right';
     ready?: boolean; // 菜单需要渲染2次，第一次渲染时不显示，用于为第二次渲染定位，第二次渲染时显示

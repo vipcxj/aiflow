@@ -1,9 +1,14 @@
+"use client";
+
 import { PropsWithChildren } from "react";
 import { MenuBar } from "./menubar";
 import { SideBar } from "./sidebar";
 import { Workspace } from "./workspace";
+import { useRedo, useUndo } from "@/lib/slices/workspace-slice";
 
 const MainLayout = ({ children }: PropsWithChildren) => {
+  useUndo();
+  useRedo();
   return (
     <div
       className={`

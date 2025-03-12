@@ -77,17 +77,33 @@ const createMenuItem = (path: number[], item: ContextMenuItem, menuState: Contex
   }
 };
 
+/**
+ * 将 level 映射到 0.3 到 1 的范围
+ * @param level 层级，从 0 开始
+ * @returns 映射后的值，介于 0.3 和 1 之间
+ */
+function mapLevelToOpacity(level: number): number {
+  // 确保 level 为非负数
+  const safeLevel = Math.max(0, level);
+  
+  // 使用指数衰减函数：0.3 + 0.7 * (0.3)^level
+  // 当 level = 0 时，结果为 1
+  // 当 level 增大时，结果渐近接近 0.5
+  return 0.3 + 0.7 * Math.pow(0.3, safeLevel);
+}
+
 const createMenu = (result: JSX.Element[], path: number[], menuState: ContextMenuState, openSubMenu: OpenSubMenuFun, closeMenu: CloseMenuFun) => {
-  const { visible, title, items, position, sideOfParent, ready } = menuState;
+  const { visible, level = 0, title, items, position, sideOfParent, ready } = menuState;
   if (!visible)
     return;
   const id = genMenuId(path);
+  
   result.push(
     <div
       id={id} key={id}
       className={cs(
         "absolute card bg-base-100 shadow-sm",
-        "min-w-48 max-w-64 max-h-96",
+        "min-w-24 max-w-64 max-h-96",
         "border-1 border-primary-content/30",
         "overflow-x-hidden",
         "overflow-y-hidden",
@@ -97,7 +113,12 @@ const createMenu = (result: JSX.Element[], path: number[], menuState: ContextMen
           'invisible': !ready,
         },
       )}
-      style={{ top: position?.y || 0, left: position?.x || 0, zIndex: 10000 + path.length }}
+      style={{
+        top: position?.y || 0, 
+        left: position?.x || 0, 
+        zIndex: 10000 + path.length,
+        opacity: mapLevelToOpacity(level),
+      }}
     >
       {/* 固定的标题部分 */}
       {title && (

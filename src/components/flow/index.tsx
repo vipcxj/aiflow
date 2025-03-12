@@ -51,7 +51,7 @@ export const Flow = () => {
     dispatch(addEdge(params));
   }, []);
 
-  const { theme } = useTheme(); 
+  const { theme } = useTheme();
   return (
     <AFReactFlow
       onContextMenu={onContextMenu}
