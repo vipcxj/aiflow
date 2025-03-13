@@ -8,18 +8,12 @@ export type AnyType = {
   name: 'any';
 };
 
-export type IntType = {
-  name: 'int';
+export type NumberType = {
+  name: 'number';
   enum?: number[];
   range?: [number, number];
   default?: number;
-};
-
-export type FloatType = {
-  name: 'float';
-  enum?: number[];
-  range?: [number, number];
-  default?: number;
+  integer?: boolean;
 };
 
 export type StringType = {
@@ -66,8 +60,7 @@ export type PythonObjectType = {
 export type NodeEntryType = 
   StringType
   | AnyType
-  | IntType
-  | FloatType 
+  | NumberType 
   | BoolType
   | ArrayType
   | DictType

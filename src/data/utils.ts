@@ -1,5 +1,5 @@
 import { evaluate } from "@/lib/eval";
-import { AnyType, ArrayType, BoolType, DictType, FloatType, IntType, NDArrayType, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, PythonObjectType, StringType, TorchTensorType } from "./data-type";
+import { AnyType, ArrayType, BoolType, DictType, NumberType, NDArrayType, NodeEntry, NodeEntryRuntime, NodeEntryType, NodeMeta, PythonObjectType, StringType, TorchTensorType } from "./data-type";
 import { AFEdge, AFNode } from "./flow-type";
 
 export function isAnyNodeEntryType(type: NodeEntryType): type is AnyType {
@@ -10,12 +10,8 @@ export function isStringNodeEntryType(type: NodeEntryType): type is StringType {
   return !Array.isArray(type) && type.name === 'string';
 }
 
-export function isIntNodeEntryType(type: NodeEntryType): type is IntType {
-  return !Array.isArray(type) && type.name === 'int';
-}
-
-export function isFloatNodeEntryType(type: NodeEntryType): type is FloatType {
-  return !Array.isArray(type) && type.name === 'float';
+export function isNumberNodeEntryType(type: NodeEntryType): type is NumberType {
+  return !Array.isArray(type) && type.name === 'number';
 }
 
 export function isBoolNodeEntryType(type: NodeEntryType): type is BoolType {
@@ -46,8 +42,17 @@ export function isUnionNodeEntryType(type: NodeEntryType): type is NodeEntryType
   return Array.isArray(type);
 }
 
-export function isNodeEntrySupportInput(entry: NodeEntry) {
-  return isStringNodeEntryType(entry.type) || isIntNodeEntryType(entry.type) || isFloatNodeEntryType(entry.type) || isBoolNodeEntryType(entry.type);
+export function isNodeEntrySupportInput(type: NodeEntryType) {
+  return isStringNodeEntryType(type) 
+  || isNumberNodeEntryType(type) 
+  || isBoolNodeEntryType(type) 
+  || (isUnionNodeEntryType(type) && type.every(isNodeEntrySupportInput));
+}
+
+export function isNodeEntryDefaultInput(type: NodeEntryType) {
+  return isStringNodeEntryType(type) 
+  || isNumberNodeEntryType(type) 
+  || isBoolNodeEntryType(type);
 }
 
 class ValError extends Error {
@@ -67,11 +72,11 @@ export function isNodeEntryDataValid(entry: NodeEntry, data: any, optional: bool
   if (data === undefined || data === null) {
     return optional;
   }
-  if (isIntNodeEntryType(entry.type) || isFloatNodeEntryType(entry.type)) {
+  if (isNumberNodeEntryType(entry.type)) {
     if (typeof data !== 'number') {
       return false;
     }
-    if (isIntNodeEntryType(entry.type) && !Number.isInteger(data)) {
+    if (entry.type.integer && !Number.isInteger(data)) {
       return false;
     }
     if (entry.type.range && (data < entry.type.range[0] || data > entry.type.range[1])) {
@@ -127,10 +132,10 @@ export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryTy
     defaultValue = entryType.enum[0];
   } else if ("range" in entryType && entryType.range) {
     defaultValue = entryType.range[0];
-    if (isIntNodeEntryType(entryType)) {
+    if (entryType.integer) {
       defaultValue = Math.ceil(defaultValue);
     }
-  } else if (isIntNodeEntryType(entryType) || isFloatNodeEntryType(entryType)) {
+  } else if (isNumberNodeEntryType(entryType)) {
     defaultValue = 0;
   } else if (isStringNodeEntryType(entryType)) {
     defaultValue = '';
@@ -168,7 +173,7 @@ export function sortInputNodeEntries(entries: NodeEntry[], runtimeEntries: NodeE
 }
 
 function createEntryRuntime(entry: NodeEntry, input: boolean): NodeEntryRuntime {
-  if (input && isNodeEntrySupportInput(entry)) {
+  if (input && isNodeEntryDefaultInput(entry.type)) {
     return {
       name: entry.name,
       mode: 'input',

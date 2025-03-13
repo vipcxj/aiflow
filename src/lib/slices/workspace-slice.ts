@@ -175,6 +175,7 @@ const __newWorkspace = (state: WorkspacesState): void => {
   state.current = id;
 };
 
+//@ts-ignore
 const _newWorkspace = workspacesAdapter.undoableReducer(__newWorkspace);
 
 const __closeWorkspace = (state: WorkspacesState, action: PayloadAction<string>): void => {

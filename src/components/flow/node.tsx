@@ -1,9 +1,9 @@
 "use client";
 
-import { isBoolNodeEntryType, isFloatNodeEntryType, isIntNodeEntryType, isNodeEntrySupportInput, sortInputNodeEntries } from "@/data/utils";
+import { isBoolNodeEntryType, isNumberNodeEntryType, isNodeEntrySupportInput, sortInputNodeEntries } from "@/data/utils";
 import { AFNode } from "@/data/flow-type";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { selectCurrentFlow, selectGlobalNodeMetas, setNodeEntryData, getNodeMeta, selectCurrentWorkspace } from "@/lib/slices/workspace-slice";
+import { selectGlobalNodeMetas, setNodeEntryData, getNodeMeta, selectCurrentWorkspace } from "@/lib/slices/workspace-slice";
 import { Handle, NodeProps, Position } from "@xyflow/react";
 import { NodeEntry, NodeEntryRuntime } from "@/data/data-type";
 import { useCallback } from "react";
@@ -32,18 +32,17 @@ type EntryInputProps = {
 };
 
 const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
-  if (runtime.mode === 'handle') {
-    return null;
-  }
   const dispatch = useAppDispatch();
   const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     let data: any = e.target.value;
     if (isBoolNodeEntryType(meta.type)) {
       data = e.target.checked;
-    } else if (isIntNodeEntryType(meta.type)) {
-      data = parseInt(e.target.value);
-    } else if (isFloatNodeEntryType(meta.type)) {
-      data = parseFloat(e.target.value);
+    } else if (isNumberNodeEntryType(meta.type)) {
+      if (meta.type.integer) {
+        data = parseInt(e.target.value);
+      } else {
+        data = parseFloat(e.target.value);
+      }
     }
     dispatch(setNodeEntryData({
       nodeId,
@@ -52,7 +51,10 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
       type: 'input'
     }));
   }, [dispatch, setNodeEntryData, nodeId, runtime.name]);
-  if (!isNodeEntrySupportInput(meta)) {
+  if (runtime.mode === 'handle') {
+    return null;
+  }
+  if (!isNodeEntrySupportInput(meta.type)) {
     return null;
   }
   if (isBoolNodeEntryType(meta.type)) {
@@ -63,7 +65,7 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
         onAbort={onChange}
       />
     );
-  } else if (isIntNodeEntryType(meta.type) || isFloatNodeEntryType(meta.type)) {
+  } else if (isNumberNodeEntryType(meta.type)) {
     return (
       <input
         type="number"
