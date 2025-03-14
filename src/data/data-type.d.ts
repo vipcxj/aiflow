@@ -16,12 +16,17 @@ export type NumberType = {
   integer?: boolean;
 };
 
-export type StringType = {
-  name: 'string';
-  enum?: string[];
+export type StringConstraint = {
   pattern?: string;
   lenMin?: number;
   lenMax?: number;
+};
+
+export type StringType = {
+  name: 'string';
+  enum?: string[];
+  // or relationship
+  constraints?: StringConstraint[];
   default?: string;
 };
 
@@ -57,6 +62,8 @@ export type PythonObjectType = {
   type: string;
 };
 
+export type UnionType = NodeEntryType[];
+
 export type NodeEntryType = 
   StringType
   | AnyType
@@ -69,9 +76,13 @@ export type NodeEntryType =
   | PythonObjectType
   | NodeEntryType[];
 
+export type SimpleType = Exclude<NodeEntryType, NodeEntryType[]>;
+export type FlattenUnionType = SimpleType[];
+
 export type NodeEntry = {
   name: string;
   type: NodeEntryType;
+  disableHandle?: boolean;
   recommandLevel: RecommandLevel;
   description: string;
   verificationCode?: {

@@ -1,4 +1,6 @@
 // 此文件由脚本自动生成，请勿直接修改
+import { ArrowPathRoundedSquare } from "./arrow-path-rounded-square";
+import { ArrowPath } from "./arrow-path";
 import { Bars3BottomLeft } from "./bars-3-bottom-left";
 import { ChevronDown } from "./chevron-down";
 import { ChevronLeft } from "./chevron-left";
@@ -9,13 +11,16 @@ import { CpuChip } from "./cpu-chip";
 import { LockClosed } from "./lock-closed";
 import { LockOpen } from "./lock-open";
 import { Moon } from "./moon";
+import { NoSymbol } from "./no-symbol";
 import { Play } from "./play";
 import { Plus } from "./plus";
 import { Sun } from "./sun";
 import { XMark } from "./x-mark";
 
 export type IconName =
-  'bars-3-bottom-left'
+  'arrow-path-rounded-square'
+  | 'arrow-path'
+  | 'bars-3-bottom-left'
   | 'chevron-down'
   | 'chevron-left'
   | 'chevron-right'
@@ -25,6 +30,7 @@ export type IconName =
   | 'lock-closed'
   | 'lock-open'
   | 'moon'
+  | 'no-symbol'
   | 'play'
   | 'plus'
   | 'sun'
@@ -37,6 +43,10 @@ export type IconProps = {
 
 export const Icon = ({ name, className }: IconProps) => {
   switch (name) {
+    case 'arrow-path-rounded-square':
+      return <ArrowPathRoundedSquare className={className} />;
+    case 'arrow-path':
+      return <ArrowPath className={className} />;
     case 'bars-3-bottom-left':
       return <Bars3BottomLeft className={className} />;
     case 'chevron-down':
@@ -57,6 +67,8 @@ export const Icon = ({ name, className }: IconProps) => {
       return <LockOpen className={className} />;
     case 'moon':
       return <Moon className={className} />;
+    case 'no-symbol':
+      return <NoSymbol className={className} />;
     case 'play':
       return <Play className={className} />;
     case 'plus':

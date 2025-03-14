@@ -8,6 +8,8 @@ import { Handle, NodeProps, Position } from "@xyflow/react";
 import { NodeEntry, NodeEntryRuntime } from "@/data/data-type";
 import { useCallback } from "react";
 import { Circle } from "../icons/circle";
+import { NoSymbol } from "../icons/no-symbol";
+import { ArrowPath } from "../icons/arrow-path";
 
 export const ErrorNode = (props: NodeProps<AFNode> & { error: string }) => {
   return (
@@ -85,6 +87,10 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
 };
 
 const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntime }: BaseNodeRowProps) => {
+  let showSwitchBtn = false;
+  if (inputMeta && inputRuntime) {
+
+  }
   return (
     <div className="flex flex-col text-xs">
       <div className="inline-flex justify-between">
@@ -112,7 +118,15 @@ const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntim
                 `} />
               </Handle>
             )}
+            {inputRuntime.mode === 'input' && (
+              <NoSymbol
+                className="w-4 h-4 stroke-[1.5] text-secondary/70"
+              />
+            )}
             {inputMeta.name}
+            <button className="btn btn-ghost btn-circle btn-xs">
+              <ArrowPath className="w-3 h-3" />
+            </button>
           </span>
         )}
         {outputMeta && outputRuntime && (
