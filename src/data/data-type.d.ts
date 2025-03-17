@@ -1,3 +1,4 @@
+import exp from 'constants';
 import type { RecommandLevel } from './enum';
 
 export type NodeRuntime = 'frontend' | 'backend' | 'prefer-frontend' | 'prefer-backend' | 'not-care';
@@ -8,6 +9,8 @@ export type AnyType = {
   name: 'any';
 };
 
+export type NormalizedAnyType = AnyType;
+
 export type NumberType = {
   name: 'number';
   enum?: number[];
@@ -15,6 +18,8 @@ export type NumberType = {
   default?: number;
   integer?: boolean;
 };
+
+export type NormalizedNumberType = NumberType;
 
 export type StringConstraint = {
   pattern?: string;
@@ -30,37 +35,87 @@ export type StringType = {
   default?: string;
 };
 
+export type NormalizedStringType = StringType;
+
 export type BoolType = {
   name: 'bool';
   default?: boolean;
 };
 
+export type NormalizedBoolType = BoolType;
+
+export type ArraySimpleShape = [NodeEntryType, number];
+export type ArrayComplexShape = Array<NodeEntryType>;
+
 export type ArrayType = {
   name: 'array';
-  shape: number[];
+  shape: ArraySimpleShape | ArrayComplexShape;
 };
+
+export type ArraySimpleType = {
+  name: 'array';
+  shape: ArraySimpleShape;
+}
+
+export type ArrayComplexType = {
+  name: 'array';
+  shape: ArrayComplexShape;
+}
+
+export type NormalizedArraySimpleShape = [NormalizedNodeEntryType, number];
+export type NormalizedArrayComplexShape = NormalizedNodeEntryType[];
+
+export type NormalizedArrayType = {
+  name: 'array';
+  shape: NormalizedArraySimpleShape | NormalizedArrayComplexShape;
+};
+
+export type NormalizedArraySimpleType = {
+  name: 'array';
+  shape: NormalizedArraySimpleShape;
+}
+
+export type NormalizedArrayComplexType = {
+  name: 'array';
+  shape: NormalizedArrayComplexShape;
+}
 
 export type DictType = {
   name: 'dict';
-  keys: {
+  keys?: {
     [key: string]: NodeEntryType;
+  }
+};
+
+export type NormalizedDictType = {
+  name: 'dict';
+  keys?: {
+    [key: string]: NormalizedNodeEntryType;
   }
 };
 
 export type NDArrayType = {
   name: 'ndarray';
-  shape: number[];
+  shape?: number[];
+  dtype?: 'int32' | 'float32' | 'float64';
 };
+
+export type NormalizedNDArrayType = NDArrayType;
 
 export type TorchTensorType = {
   name: 'torch-tensor';
-  shape: number[];
+  shape?: number[];
+  dtype?: 'int32' | 'float32' | 'float64';
 };
+
+export type NormalizedTorchTensorType = TorchTensorType;
 
 export type PythonObjectType = {
   name: 'python-object';
   type: string;
 };
+
+export type NormalizedPythonObjectType = PythonObjectType;
 
 export type UnionType = NodeEntryType[];
 
@@ -74,10 +129,23 @@ export type NodeEntryType =
   | NDArrayType
   | TorchTensorType
   | PythonObjectType
-  | NodeEntryType[];
+  | UnionType;
 
 export type SimpleType = Exclude<NodeEntryType, NodeEntryType[]>;
 export type FlattenUnionType = SimpleType[];
+export type NormalizedUnionType = NormalizedSimpleType[];
+export type NormalizedNodeEntryType =
+  NormalizedStringType
+  | NormalizedAnyType
+  | NormalizedNumberType 
+  | NormalizedBoolType
+  | NormalizedArrayType
+  | NormalizedDictType
+  | NormalizedNDArrayType
+  | NormalizedTorchTensorType
+  | NormalizedPythonObjectType
+  | NormalizedUnionType;
+export type NormalizedSimpleType = Exclude<NormalizedNodeEntryType, NormalizedNodeEntryType[]>;
 
 export type NodeEntry = {
   name: string;
