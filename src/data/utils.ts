@@ -1,20 +1,20 @@
 import { evaluate } from "@/lib/eval";
-import { 
+import {
   AnyType,
-  ArrayType, 
-  BoolType, 
-  DictType, 
-  NumberType, 
-  NDArrayType, 
-  NodeEntry, 
-  NodeEntryRuntime, 
-  NodeEntryType, 
-  NodeMeta, 
-  PythonObjectType, 
-  StringType, 
-  TorchTensorType, 
-  FlattenUnionType, 
-  SimpleType, 
+  ArrayType,
+  BoolType,
+  DictType,
+  NumberType,
+  NDArrayType,
+  NodeEntry,
+  NodeEntryRuntime,
+  NodeEntryType,
+  NodeMeta,
+  PythonObjectType,
+  StringType,
+  TorchTensorType,
+  FlattenUnionType,
+  SimpleType,
   UnionType,
   NormalizedAnyType,
   NormalizedNumberType,
@@ -27,16 +27,32 @@ import {
   NormalizedUnionType,
   NormalizedNodeEntryType,
   NormalizedPythonObjectType,
-  NormalizedArrayComplexShape,
   NormalizedArrayComplexType,
   ArrayComplexShape,
   ArraySimpleShape,
+  NormalizedSimpleType,
+  NeverType,
 } from "./data-type";
 import { AFNode } from "./flow-type";
-import { Exo } from "next/font/google";
+
+export function isArrayShallowEquals<T>(a: T[], b: T[]): boolean {
+  if (a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 
 export function isAnyNodeEntryType(type: NodeEntryType): type is AnyType {
   return !Array.isArray(type) && type.name === 'any';
+}
+
+export function isNeverNodeEntryType(type: NodeEntryType): type is NeverType {
+  return !Array.isArray(type) && type.name === 'never';
 }
 
 export function isStringNodeEntryType(type: NodeEntryType): type is StringType {
@@ -282,7 +298,7 @@ export function compareNodeEntryArrayType(a: NormalizedArrayType, b: NormalizedA
       return a.shape[1] - b.shape.length;
     }
     for (let i = 0; i < b.shape.length; i++) {
-      const c = compareNodeEntryType(eType, b.shape[i] as NodeEntryType);
+      const c = compareNodeEntryType(eType, (b as NormalizedArrayComplexType).shape[i]);
       if (c !== 0) {
         return c;
       }
@@ -301,6 +317,21 @@ export function compareNodeEntryArrayType(a: NormalizedArrayType, b: NormalizedA
       }
     }
     return 0;
+  }
+}
+
+function normalizeNodeEntryDictType(type: DictType): NormalizedDictType {
+  if (type.keys) {
+    const keys: Record<string, NormalizedNodeEntryType> = {};
+    for (const key in type.keys) {
+      keys[key] = normalizeNodeEntryType(type.keys[key]);
+    }
+    return {
+      name: 'dict',
+      keys,
+    };
+  } else {
+    return { name: 'dict' };
   }
 }
 
@@ -400,8 +431,41 @@ function flattenUnionNodeEntryType(type: UnionType): FlattenUnionType {
   }, []);
 }
 
-export function normalizeNodeEntryUnionType(type: UnionType): NormalizedUnionType {
-  return flattenUnionNodeEntryType(type).map(normalizeNodeEntryType).sort(compareNodeEntryType);
+export function normalizeNodeEntryUnionType(type: UnionType): NormalizedNodeEntryType {
+  const result = flattenUnionNodeEntryType(type)
+    .map(normalizeNodeEntryType)
+    .reduce<NormalizedNodeEntryType>((acc, t) => {
+      if (isAnyNodeEntryType(acc)) {
+        return acc;
+      }
+      if (isNeverNodeEntryType(acc)) {
+        return t;
+      }
+      
+      const out: NormalizedSimpleType[] = [];
+      let combined = false;
+      for (const a of acc) {
+        if (combined) {
+          out.push(a);
+        } else {
+          const at = combineNodeEntryType(a, t);
+          if (!isNormalizedUnionNodeEntryType(at)) {
+            combined = true;
+            out.push(at);
+          } else {
+            out.push(a);
+          }
+        }
+      }
+      if (!combined) {
+        out.push(t as NormalizedSimpleType);
+      }
+      return out;
+    }, [])
+    .sort(compareNodeEntryType);
+    if (result.length === 1) {
+      return result[0];
+    }
 }
 
 /**
@@ -435,7 +499,7 @@ export function normalizeNodeEntryType(type: NodeEntryType): NormalizedNodeEntry
   } else if (isArrayNodeEntryType(type)) {
     return normalizeNodeEntryArrayType(type);
   } else if (isDictNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryDictType(type);
   } else if (isNDArrayNodeEntryType(type)) {
     return type;
   } else if (isTorchTensorNodeEntryType(type)) {
@@ -475,7 +539,7 @@ export function compareNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNo
     case 'python-object':
       return (a as PythonObjectType).type.localeCompare((b as PythonObjectType).type);
     case 'union':
-      return compareNodeEntryUnionType(a as UnionType, b as UnionType);
+      return compareNodeEntryUnionType(a as NormalizedUnionType, b as NormalizedUnionType);
     default:
       throw new Error(`Unknown node entry type: ${aName}`);
   }
@@ -626,31 +690,180 @@ function combineNodeEntryArrayType(a: NormalizedArrayType, b: NormalizedArrayTyp
   }
 }
 
-function combineNodeEntryType(a: SimpleType, b: SimpleType): SimpleType | undefined {
-  if (a.name !== b.name) {
-    return undefined;
-  }
-  switch (a.name) {
-    case 'string':
-      return combineNodeEntryStringType(a, b as StringType);
-    case 'number':
-      return combineNodeEntryNumberType(a, b as NumberType);
-    case 'bool':
-      return a;
-    case 'array': {
-      return combineNodeEntryArrayType(a, b as NormalizedArrayType);
-    }
-    case 'dict': {
+function combineNodeEntryDictType(a: NormalizedDictType, b: NormalizedDictType): NormalizedDictType {
+  if (a.keys && b.keys) {
+    // 合并两个字典的所有键
+    const allKeys = new Set([...Object.keys(a.keys), ...Object.keys(b.keys)]);
+    const combinedKeys: Record<string, NormalizedNodeEntryType> = {};
 
+    // 尝试为每个键找到合适的类型
+    for (const key of allKeys) {
+      const aType = a.keys[key];
+      const bType = b.keys[key];
+
+      if (!aType) {
+        combinedKeys[key] = bType;
+      } else if (!bType) {
+        combinedKeys[key] = aType;
+      } else {
+        // 两者都有这个键，需要计算它们值类型的并集
+        combinedKeys[key] = combineNodeEntryType(aType, bType);
+      }
     }
-    case 'ndarray': {
+
+    return {
+      name: 'dict',
+      keys: combinedKeys
+    };
+  } else if (a.keys) {
+    return a;
+  } else if (b.keys) {
+    return b;
+  } else {
+    // 两者都没有指定键
+    return { name: 'dict' };
+  }
+}
+
+function combineNodeEntryNDArrayType(a: NormalizedNDArrayType, b: NormalizedNDArrayType): NormalizedNDArrayType | undefined {
+  // 检查数据类型
+  if (a.dtype !== b.dtype) {
+    return undefined; // 不兼容的数据类型
+  }
+
+  // 处理形状
+  if (a.shape && b.shape) {
+    if (a.shape.length !== b.shape.length) return undefined; // 维度不匹配
+
+    const combinedShape: number[] = [];
+    for (let i = 0; i < a.shape.length; i++) {
+      // -1 表示动态维度，合并时保留
+      if (a.shape[i] === -1 || b.shape[i] === -1) {
+        combinedShape.push(-1);
+      } else if (a.shape[i] !== b.shape[i]) {
+        return undefined; // 静态维度不匹配
+      } else {
+        combinedShape.push(a.shape[i]);
+      }
     }
-    case 'torch-tensor': {
+    return {
+      name: 'ndarray',
+      dtype: a.dtype,
+      shape: combinedShape
+    };
+  } else if (a.shape) {
+    return a;
+  } else if (b.shape) {
+    return b;
+  } else {
+    // 两者都没有指定形状
+    return {
+      name: 'ndarray',
+      dtype: a.dtype
+    };
+  }
+}
+
+function combineTorchTensorType(a: NormalizedTorchTensorType, b: NormalizedTorchTensorType): NormalizedTorchTensorType | undefined {
+  // 检查数据类型
+  if (a.dtype !== b.dtype) {
+    return undefined; // 不兼容的数据类型
+  }
+
+  // 处理形状
+  if (a.shape && b.shape) {
+    if (a.shape.length !== b.shape.length) return undefined; // 维度不匹配
+
+    const combinedShape: number[] = [];
+    for (let i = 0; i < a.shape.length; i++) {
+      // -1 表示动态维度，合并时保留
+      if (a.shape[i] === -1 || b.shape[i] === -1) {
+        combinedShape.push(-1);
+      } else if (a.shape[i] !== b.shape[i]) {
+        return undefined; // 静态维度不匹配
+      } else {
+        combinedShape.push(a.shape[i]);
+      }
     }
-    case 'python-object': {
-    }
+    return {
+      name: 'torch-tensor',
+      dtype: a.dtype,
+      shape: combinedShape
+    };
+  } else if (a.shape) {
+    return a;
+  } else if (b.shape) {
+    return b;
+  } else {
+    // 两者都没有指定形状
+    return {
+      name: 'torch-tensor',
+      dtype: a.dtype
+    };
+  }
+}
+
+function combinePythonObjectType(a: PythonObjectType, b: PythonObjectType): PythonObjectType | undefined {
+  // Python 对象类型只能在完全相同时合并
+  if (a.type === b.type) {
+    return a;
   }
   return undefined;
+}
+
+function combineNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNodeEntryType): NormalizedNodeEntryType {
+  // 如果其中一个是 any，则结果为另一个类型
+  if (isAnyNodeEntryType(a)) return b;
+  if (isAnyNodeEntryType(b)) return a;
+
+  if (!isNormalizedUnionNodeEntryType(a) && !isNormalizedUnionNodeEntryType(b)) {
+    if (a.name !== b.name) {
+      return [a, b].sort(compareNodeEntryType);
+    }
+    let ab: NormalizedNodeEntryType | undefined;
+    switch (a.name) {
+      case 'string':
+        ab = combineNodeEntryStringType(a, b as NormalizedStringType);
+        break;
+      case 'number':
+        ab = combineNodeEntryNumberType(a, b as NormalizedNumberType);
+        break;
+      case 'bool':
+        return a; // Boolean 类型可以直接合并
+      case 'array':
+        ab = combineNodeEntryArrayType(a, b as NormalizedArrayType);
+        break;
+      case 'dict':
+        ab = combineNodeEntryDictType(a, b as NormalizedDictType);
+        break;
+      case 'ndarray':
+        ab = combineNodeEntryNDArrayType(a, b as NormalizedNDArrayType);
+        break;
+      case 'torch-tensor':
+        ab = combineTorchTensorType(a, b as NormalizedTorchTensorType);
+        break;
+      case 'python-object':
+        ab = combinePythonObjectType(a, b as NormalizedPythonObjectType);
+        break
+      default:
+        throw new Error(`Unknown node entry type: ${(a as SimpleType).name}`);
+    }
+    if (ab) {
+      return ab;
+    } else {
+      return [a, b].sort(compareNodeEntryType);
+    }
+  } else {
+    let ab: NormalizedNodeEntryType | undefined;
+    if (isNormalizedUnionNodeEntryType(a) && isNormalizedUnionNodeEntryType(b)) {
+      ab = [...a, ...b];
+    } else if (isNormalizedUnionNodeEntryType(a)) {
+      ab = [...a, b];
+    } else {
+      ab = [a, ...b as NormalizedUnionType];
+    }
+    return normalizeNodeEntryUnionType(ab);
+  }
 }
 
 export function getNodeEntryAvailableTypes(entry: NodeEntry): NodeEntryType[] {

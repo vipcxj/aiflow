@@ -11,6 +11,12 @@ export type AnyType = {
 
 export type NormalizedAnyType = AnyType;
 
+export type NeverType = {
+  name: 'never';
+}
+
+export type NormalizedNeverType = NeverType;
+
 export type NumberType = {
   name: 'number';
   enum?: number[];
@@ -120,8 +126,9 @@ export type NormalizedPythonObjectType = PythonObjectType;
 export type UnionType = NodeEntryType[];
 
 export type NodeEntryType = 
-  StringType
-  | AnyType
+  AnyType
+  | NeverType
+  | StringType
   | NumberType 
   | BoolType
   | ArrayType
@@ -131,21 +138,19 @@ export type NodeEntryType =
   | PythonObjectType
   | UnionType;
 
-export type SimpleType = Exclude<NodeEntryType, NodeEntryType[]>;
+export type SimpleType = Exclude<NodeEntryType, AnyType | NeverType | UnionType>;
 export type FlattenUnionType = SimpleType[];
-export type NormalizedUnionType = NormalizedSimpleType[];
-export type NormalizedNodeEntryType =
+export type NormalizedSimpleType = 
   NormalizedStringType
-  | NormalizedAnyType
   | NormalizedNumberType 
   | NormalizedBoolType
   | NormalizedArrayType
   | NormalizedDictType
   | NormalizedNDArrayType
   | NormalizedTorchTensorType
-  | NormalizedPythonObjectType
-  | NormalizedUnionType;
-export type NormalizedSimpleType = Exclude<NormalizedNodeEntryType, NormalizedNodeEntryType[]>;
+  | NormalizedPythonObjectType;
+export type NormalizedUnionType = NormalizedSimpleType[];
+export type NormalizedNodeEntryType = NormalizedAnyType | NormalizedNeverType | NormalizedSimpleType | NormalizedUnionType;
 
 export type NodeEntry = {
   name: string;
