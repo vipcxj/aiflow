@@ -149,12 +149,23 @@ export type NormalizedSimpleType =
   | NormalizedNDArrayType
   | NormalizedTorchTensorType
   | NormalizedPythonObjectType;
+/**
+ * length > 1
+ */
 export type NormalizedUnionType = NormalizedSimpleType[];
 export type NormalizedNodeEntryType = NormalizedAnyType | NormalizedNeverType | NormalizedSimpleType | NormalizedUnionType;
+export type NormalizedNodeEntrySimpleTypeSupportInput =
+  NormalizedStringType
+  | NormalizedNumberType 
+  | NormalizedBoolType;
+export type NormalizedNodeEntryComplexTypeSupportInput = NormalizedNodeEntrySimpleTypeSupportInput[];
+export type NormalizedNodeEntryTypeSupportInput = 
+  NormalizedNodeEntrySimpleTypeSupportInput
+  | NormalizedNodeEntryComplexTypeSupportInput;
 
 export type NodeEntry = {
   name: string;
-  type: NodeEntryType;
+  type: NormalizedNodeEntryType;
   disableHandle?: boolean;
   recommandLevel: RecommandLevel;
   description: string;
@@ -186,14 +197,20 @@ export type NodeMetaRef = {
   version: string;
 };
 
+export type NodeEntryConfig = {
+  name: string;
+  mode: 'handle' | 'input';
+  modeIndex: number;
+}
+
 export type NodeEntryRuntime = {
-  name: string;
-  mode: 'handle';
-} | {
-  name: string;
-  mode: 'input';
   data: any;
 };
+
+export type NodeEntryData = {
+  runtime: NodeEntryRuntime;
+  config: NodeEntryConfig;
+}
 
 export type NodeData = {
   meta: NodeMetaRef;
@@ -201,8 +218,8 @@ export type NodeData = {
   collapsed: boolean;
   nativeMode: NodeNativeMode;
   renderer: string;
-  inputs: NodeEntryRuntime[];
-  outputs: NodeEntryRuntime[];
+  inputs: NodeEntryData[];
+  outputs: NodeEntryData[];
 };
 
 export type EdgeData = {

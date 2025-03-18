@@ -32,6 +32,10 @@ import {
   ArraySimpleShape,
   NormalizedSimpleType,
   NeverType,
+  NormalizedNeverType,
+  NormalizedNodeEntrySimpleTypeSupportInput,
+  NormalizedNodeEntryComplexTypeSupportInput,
+  NormalizedNodeEntryTypeSupportInput,
 } from "./data-type";
 import { AFNode } from "./flow-type";
 
@@ -91,8 +95,31 @@ export function isUnionNodeEntryType(type: NodeEntryType): type is UnionType {
   return Array.isArray(type);
 }
 
-export function isNormalizedUnionNodeEntryType(type: NormalizedNodeEntryType): type is NormalizedUnionType {
-  return Array.isArray(type);
+export function isNormalizedUnionNodeEntryType(type: NormalizedNodeEntryType, strict: boolean = false): type is NormalizedUnionType {
+  return Array.isArray(type) && (!strict || type.length > 1);
+}
+
+export function isNodeEntrySimpleTypeSupportInput(type: NormalizedNodeEntryType): type is NormalizedNodeEntrySimpleTypeSupportInput {
+  return isStringNodeEntryType(type)
+    || isNumberNodeEntryType(type)
+    || isBoolNodeEntryType(type);
+}
+
+export function isNodeEntryComplexTypeSupportInput(type: NormalizedNodeEntryType): type is NormalizedNodeEntryComplexTypeSupportInput {
+  return isUnionNodeEntryType(type)
+    && type.every(isNodeEntrySimpleTypeSupportInput);
+}
+
+export function isNodeEntryTypeSupportInput(type: NormalizedNodeEntryType): type is NormalizedNodeEntryTypeSupportInput {
+  return isNodeEntrySimpleTypeSupportInput(type) || isNodeEntryComplexTypeSupportInput(type);
+}
+
+export function isNodeEntryTypePartialSupportInput(type: NormalizedNodeEntryType): boolean {
+  return isNodeEntrySimpleTypeSupportInput(type) || (isUnionNodeEntryType(type) && type.some(isNodeEntrySimpleTypeSupportInput));
+}
+
+export function isNodeEntryDefaultInput(type: NormalizedNodeEntryType): boolean {
+  return isNodeEntrySimpleTypeSupportInput(type);
 }
 
 export function calcNodeEntryNumberTypeEnum(t: NumberType): number[] | undefined {
@@ -417,55 +444,51 @@ export function compareNodeEntryPythonObjectType(a: NormalizedPythonObjectType, 
   return a.type.localeCompare(b.type);
 }
 
-function flattenUnionNodeEntryType(type: UnionType): FlattenUnionType {
-  return type.reduce<FlattenUnionType>((acc, t) => {
-    if (isUnionNodeEntryType(t)) {
-      for (const tt of flattenUnionNodeEntryType(t)) {
-        acc.push(tt);
+export function normalizeNodeEntryUnionType(type: UnionType): NormalizedNodeEntryType {
+  type U = NormalizedAnyType | NormalizedNeverType | NormalizedSimpleType[];
+  const result = type.reduce<U>((acc: U, t: NodeEntryType): U => {
+    if (isAnyNodeEntryType(acc)) {
+      return acc;
+    }
+    const nt = normalizeNodeEntryType(t);
+    if (isAnyNodeEntryType(nt)) {
+      return nt;
+    }
+    if (isNeverNodeEntryType(nt)) {
+      return acc;
+    }
+    if (isNeverNodeEntryType(acc)) {
+      if (!isNormalizedUnionNodeEntryType(nt)) {
+        return [nt];
+      } else {
+        return nt;
       }
+    }
+    let bt: NormalizedUnionType | NormalizedSimpleType | NormalizedNeverType = [];
+    if (isNormalizedUnionNodeEntryType(nt)) {
+      bt = combineNodeEntryUnionType(acc, nt);
+    } else if (isAnyNodeEntryType(nt)) {
+      return nt;
+    } else if (isNeverNodeEntryType(nt)) {
       return acc;
     } else {
-      acc.push(t);
-      return acc;
+      bt = combineNodeEntryUnionType(acc, [nt]);
     }
-  }, []);
-}
-
-export function normalizeNodeEntryUnionType(type: UnionType): NormalizedNodeEntryType {
-  const result = flattenUnionNodeEntryType(type)
-    .map(normalizeNodeEntryType)
-    .reduce<NormalizedNodeEntryType>((acc, t) => {
-      if (isAnyNodeEntryType(acc)) {
-        return acc;
-      }
-      if (isNeverNodeEntryType(acc)) {
-        return t;
-      }
-      
-      const out: NormalizedSimpleType[] = [];
-      let combined = false;
-      for (const a of acc) {
-        if (combined) {
-          out.push(a);
-        } else {
-          const at = combineNodeEntryType(a, t);
-          if (!isNormalizedUnionNodeEntryType(at)) {
-            combined = true;
-            out.push(at);
-          } else {
-            out.push(a);
-          }
-        }
-      }
-      if (!combined) {
-        out.push(t as NormalizedSimpleType);
-      }
-      return out;
-    }, [])
-    .sort(compareNodeEntryType);
-    if (result.length === 1) {
-      return result[0];
+    if (!isNormalizedUnionNodeEntryType(bt) && !isNeverNodeEntryType(bt)) {
+      return [bt];
+    } else {
+      return bt;
     }
+  }, [] as U);
+  if (isAnyNodeEntryType(result) || isNeverNodeEntryType(result)) {
+    return result;
+  } else if (result.length === 0) {
+    return { name: 'never' };
+  } else if (result.length === 1) {
+    return result[0];
+  } else {
+    return result;
+  }
 }
 
 /**
@@ -543,19 +566,6 @@ export function compareNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNo
     default:
       throw new Error(`Unknown node entry type: ${aName}`);
   }
-}
-
-export function isNodeEntrySupportInput(type: NodeEntryType) {
-  return isStringNodeEntryType(type)
-    || isNumberNodeEntryType(type)
-    || isBoolNodeEntryType(type)
-    || (isUnionNodeEntryType(type) && type.every(isNodeEntrySupportInput));
-}
-
-export function isNodeEntryDefaultInput(type: NodeEntryType) {
-  return isStringNodeEntryType(type)
-    || isNumberNodeEntryType(type)
-    || isBoolNodeEntryType(type);
 }
 
 function rangeInclude(a?: [number, number], b?: [number, number]): boolean {
@@ -811,10 +821,53 @@ function combinePythonObjectType(a: PythonObjectType, b: PythonObjectType): Pyth
   return undefined;
 }
 
+/**
+ * 合并两个 Union 类型，这里的Union类型条件更宽松，允许空数组和只有一个元素。
+ * @param a 第一个Union类型
+ * @param b 第二个Union类型
+ * @returns 合并后的类型，这里是严格Union类型（length > 1），或者是单一类型（length === 1），或者是Never类型（length === 0）
+ */
+function combineNodeEntryUnionType(a: NormalizedSimpleType[], b: NormalizedSimpleType[]): NormalizedUnionType | NormalizedSimpleType | NormalizedNeverType {
+  const combined: NormalizedSimpleType[] = [];
+  for (const ta of a) {
+    let found = false;
+    for (let j = 0; j < b.length; j++) {
+      const tb = b[j];
+      const combinedType = combineNodeEntryType(ta, tb);
+      if (!combinedType) {
+        continue;
+      } else {
+        // 因为ta和tb都是NormalizedSimpleType，
+        // 合并后要么undefined，说明不兼容，
+        // 要么是有效类型，说明兼容，
+        // 不可能是AnyType, NeverType和UnionType
+        combined.push(combinedType as NormalizedSimpleType);
+        b = b.filter(v => v !== tb);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      combined.push(ta);
+    }
+  }
+  combined.push(...b);
+  combined.sort(compareNodeEntryType);
+  if (combined.length === 1) {
+    return combined[0];
+  } else if (combined.length === 0) {
+    return { name: 'never' };
+  } else {
+    return combined;
+  }
+}
+
 function combineNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNodeEntryType): NormalizedNodeEntryType {
   // 如果其中一个是 any，则结果为另一个类型
-  if (isAnyNodeEntryType(a)) return b;
-  if (isAnyNodeEntryType(b)) return a;
+  if (isAnyNodeEntryType(a)) return a;
+  if (isAnyNodeEntryType(b)) return b;
+  if (isNeverNodeEntryType(a)) return b;
+  if (isNeverNodeEntryType(b)) return a;
 
   if (!isNormalizedUnionNodeEntryType(a) && !isNormalizedUnionNodeEntryType(b)) {
     if (a.name !== b.name) {
@@ -854,32 +907,35 @@ function combineNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNodeEntry
       return [a, b].sort(compareNodeEntryType);
     }
   } else {
-    let ab: NormalizedNodeEntryType | undefined;
-    if (isNormalizedUnionNodeEntryType(a) && isNormalizedUnionNodeEntryType(b)) {
-      ab = [...a, ...b];
-    } else if (isNormalizedUnionNodeEntryType(a)) {
-      ab = [...a, b];
+    if (isNormalizedUnionNodeEntryType(a)) {
+      if (isNormalizedUnionNodeEntryType(b)) {
+        return combineNodeEntryUnionType(a, b);
+      } else {
+        return combineNodeEntryUnionType(a, [b]);
+      }
+    } else if (isNormalizedUnionNodeEntryType(b)) {
+      return combineNodeEntryUnionType([a], b);
     } else {
-      ab = [a, ...b as NormalizedUnionType];
+      throw new Error(`Unknown node entry type: ${a}`);
     }
-    return normalizeNodeEntryUnionType(ab);
   }
 }
 
-export function getNodeEntryAvailableTypes(entry: NodeEntry): NodeEntryType[] {
-  if (isUnionNodeEntryType(entry.type)) {
-    return flattenUnionNodeEntryType(entry.type).reduce<SimpleType[]>((acc, type) => {
-      for (let i = 0; i < acc.length; i++) {
-        const t = acc[i];
-        const combined = combineNodeEntryType(t, type);
-        if (combined) {
-          acc[i] = combined;
-          return acc;
-        }
-      }
-      acc.push(type);
-      return acc;
-    }, []);
+/**
+ * SimpleType -> [SimpleType];
+ * NeverType -> [];
+ * UnionType -> UnionType;
+ * AnyType -> AnyType;
+ * @param entry 
+ * @returns available types
+ */
+export function getNodeEntryAvailableTypes(entry: NodeEntry): NormalizedAnyType | NormalizedSimpleType[] {
+  if (isNormalizedUnionNodeEntryType(entry.type)) {
+    return entry.type;
+  } else if (isAnyNodeEntryType(entry.type)) {
+    return entry.type;
+  } else if (isNeverNodeEntryType(entry.type)) {
+    return [];
   } else {
     return [entry.type];
   }
@@ -991,7 +1047,7 @@ export function sortInputNodeEntries(entries: NodeEntry[], runtimeEntries: NodeE
 }
 
 function createEntryRuntime(entry: NodeEntry, input: boolean): NodeEntryRuntime {
-  if (input && isNodeEntrySupportInput(entry.type) && (!!entry.disableHandle || isNodeEntryDefaultInput(entry.type))) {
+  if (input && isNodeEntryTypeSupportInput(entry.type) && (!!entry.disableHandle || isNodeEntryDefaultInput(entry.type))) {
     return {
       name: entry.name,
       mode: 'input',

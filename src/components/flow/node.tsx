@@ -1,6 +1,6 @@
 "use client";
 
-import { isBoolNodeEntryType, isNumberNodeEntryType, isNodeEntrySupportInput, sortInputNodeEntries } from "@/data/utils";
+import { isBoolNodeEntryType, isNumberNodeEntryType, isNodeEntryTypeSupportInput, sortInputNodeEntries } from "@/data/utils";
 import { AFNode } from "@/data/flow-type";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectGlobalNodeMetas, setNodeEntryData, getNodeMeta, selectCurrentWorkspace } from "@/lib/slices/workspace-slice";
@@ -56,7 +56,7 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
   if (runtime.mode === 'handle') {
     return null;
   }
-  if (!isNodeEntrySupportInput(meta.type)) {
+  if (!isNodeEntryTypeSupportInput(meta.type)) {
     return null;
   }
   if (isBoolNodeEntryType(meta.type)) {
