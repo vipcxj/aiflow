@@ -13,9 +13,7 @@ export const globalNodeMetas: NodeMeta[] = [
       {
         name: 'operand 1',
         type: [{
-          name: 'int',
-        }, {
-          name: 'float',
+          name: 'number',
         }],
         recommandLevel: RecommandLevel.MUST,
         description: 'The first number to be added.',
@@ -23,9 +21,7 @@ export const globalNodeMetas: NodeMeta[] = [
       {
         name: 'operand 2',
         type: [{
-          name: 'int',
-        }, {
-          name: 'float',
+          name: 'number',
         }],
         recommandLevel: RecommandLevel.MUST,
         description: 'The second number to be added.',
@@ -34,9 +30,7 @@ export const globalNodeMetas: NodeMeta[] = [
     outputs: [{
       name: 'result',
       type: [{
-        name: 'int',
-      }, {
-        name: 'float',
+        name: 'number',
       }],
       recommandLevel: RecommandLevel.NORMAL,
       description: 'The result of the addition.',

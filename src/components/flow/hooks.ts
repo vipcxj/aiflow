@@ -51,8 +51,8 @@ export const useNodeMetaTree = () => {
     const globalTree: NodeMetaTree = {};
     const userTree: NodeMetaTree = {};
     const tree: NodeMetaTree = {
-      '[d]global': globalTree,
-      '[d]user': userTree,
+      '[d]Add System Node': globalTree,
+      '[d]Add User Node': userTree,
     };
     makeNodeMetaTree(globalNodeMetas, globalTree);
     makeNodeMetaTree(currentWorkspace.embeddedNodeImpls.map(impl => impl.meta), userTree);

@@ -79,10 +79,6 @@ const useAddNodeMenu = () => {
 export const useGroundContextMenu = () => {
   const addNodeMenu = useAddNodeMenu();
   return useOpenContextMenu('', [
-    {
-      type: 'menu',
-      label: 'Add Node',
-      subMenu: addNodeMenu,
-    },
+    ...addNodeMenu.items
   ]);
 };
