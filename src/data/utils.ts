@@ -36,8 +36,11 @@ import {
   NormalizedNodeEntrySimpleTypeSupportInput,
   NormalizedNodeEntryComplexTypeSupportInput,
   NormalizedNodeEntryTypeSupportInput,
+  NodeEntryConfig,
+  NodeEntryData,
 } from "./data-type";
 import { AFNode } from "./flow-type";
+import { config } from "process";
 
 export function isArrayShallowEquals<T>(a: T[], b: T[]): boolean {
   if (a.length !== b.length) {
@@ -1025,38 +1028,51 @@ export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryTy
   return defaultValue;
 }
 
-export type NodeEntryData = {
+export type NodeEntryDataWithMeta = {
   meta: NodeEntry;
   runtime: NodeEntryRuntime;
+  config: NodeEntryConfig;
 };
 
-export function sortInputNodeEntries(entries: NodeEntry[], runtimeEntries: NodeEntryRuntime[]): NodeEntryData[] {
+export function sortInputNodeEntries(entries: NodeEntry[], runtimeEntriesData: NodeEntryData[]): NodeEntryDataWithMeta[] {
   return entries.map((entry, i) => ({
     meta: entry,
-    runtime: runtimeEntries[i],
+    runtime: runtimeEntriesData[i].runtime,
+    config: runtimeEntriesData[i].config,
     i,
   })).sort((a, b) => {
-    if (a.runtime.mode === 'handle' && b.runtime.mode !== 'handle') {
+    if (a.config.mode === 'handle' && b.config.mode !== 'handle') {
       return -1;
-    } else if (a.runtime.mode !== 'handle' && b.runtime.mode === 'handle') {
+    } else if (a.config.mode !== 'handle' && b.config.mode === 'handle') {
       return 1;
     } else {
       return a.i - b.i;
     }
-  }).map(({ meta, runtime }) => ({ meta, runtime }));
+  }).map(({ meta, runtime, config }) => ({ meta, runtime, config }));
 }
 
-function createEntryRuntime(entry: NodeEntry, input: boolean): NodeEntryRuntime {
+function createEntryData(entry: NodeEntry, input: boolean): NodeEntryData {
   if (input && isNodeEntryTypeSupportInput(entry.type) && (!!entry.disableHandle || isNodeEntryDefaultInput(entry.type))) {
     return {
-      name: entry.name,
-      mode: 'input',
-      data: getNodeEntryDefaultData(entry, entry.type),
+      config: {
+        name: entry.name,
+        mode: 'input',
+        modeIndex: 0,
+      },
+      runtime: {
+        data: getNodeEntryDefaultData(entry, entry.type),
+      },
     };
   } else {
     return {
-      name: entry.name,
-      mode: 'handle',
+      config: {
+        name: entry.name,
+        mode: 'handle',
+        modeIndex: 0,
+      },
+      runtime: {
+        data: undefined,
+      },
     };
   }
 }
@@ -1074,8 +1090,8 @@ export function createNode(id: string, meta: NodeMeta, x: number, y: number): AF
       collapsed: false,
       nativeMode: 'prefer',
       renderer: meta.defaultRenderer,
-      inputs: meta.inputs.map(entry => createEntryRuntime(entry, true)),
-      outputs: meta.outputs.map(entry => createEntryRuntime(entry, false)),
+      inputs: meta.inputs.map(entry => createEntryData(entry, true)),
+      outputs: meta.outputs.map(entry => createEntryData(entry, false)),
     },
   };
 }

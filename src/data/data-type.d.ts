@@ -205,6 +205,7 @@ export type NodeEntryConfig = {
 
 export type NodeEntryRuntime = {
   data: any;
+  type?: NormalizedNodeEntryType;
 };
 
 export type NodeEntryData = {

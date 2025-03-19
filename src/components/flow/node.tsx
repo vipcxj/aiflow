@@ -5,7 +5,7 @@ import { AFNode } from "@/data/flow-type";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { selectGlobalNodeMetas, setNodeEntryData, getNodeMeta, selectCurrentWorkspace } from "@/lib/slices/workspace-slice";
 import { Handle, NodeProps, Position } from "@xyflow/react";
-import { NodeEntry, NodeEntryRuntime } from "@/data/data-type";
+import { NodeEntry, NodeEntryConfig, NodeEntryRuntime } from "@/data/data-type";
 import { useCallback } from "react";
 import { Circle } from "../icons/circle";
 import { NoSymbol } from "../icons/no-symbol";
@@ -23,17 +23,20 @@ type BaseNodeRowProps = {
   nodeId: string;
   inputMeta?: NodeEntry;
   inputRuntime?: NodeEntryRuntime;
+  inputConfig?: NodeEntryConfig;
   outputMeta?: NodeEntry;
   outputRuntime?: NodeEntryRuntime;
+  outputConfig?: NodeEntryConfig;
 };
 
 type EntryInputProps = {
   nodeId: string;
   meta: NodeEntry;
   runtime: NodeEntryRuntime;
+  config: NodeEntryConfig;
 };
 
-const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
+const EntryInput = ({ nodeId, meta, runtime, config }: EntryInputProps) => {
   const dispatch = useAppDispatch();
   const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     let data: any = e.target.value;
@@ -48,12 +51,12 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
     }
     dispatch(setNodeEntryData({
       nodeId,
-      entryId: runtime.name,
+      entryId: config.name,
       data,
       type: 'input'
     }));
-  }, [dispatch, setNodeEntryData, nodeId, runtime.name]);
-  if (runtime.mode === 'handle') {
+  }, [dispatch, setNodeEntryData, nodeId, config.name]);
+  if (config.mode === 'handle') {
     return null;
   }
   if (!isNodeEntryTypeSupportInput(meta.type)) {
@@ -86,7 +89,7 @@ const EntryInput = ({ nodeId, meta, runtime }: EntryInputProps) => {
   }
 };
 
-const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntime }: BaseNodeRowProps) => {
+const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, inputConfig, outputMeta, outputRuntime, outputConfig }: BaseNodeRowProps) => {
   let showSwitchBtn = false;
   if (inputMeta && inputRuntime) {
 
@@ -94,13 +97,13 @@ const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntim
   return (
     <div className="flex flex-col text-xs">
       <div className="inline-flex justify-between">
-        {inputMeta && inputRuntime && (
+        {inputMeta && inputConfig && (
           <span className="inline-flex items-center ml-1 mr-4">
-            {inputRuntime.mode === 'handle' && (
+            {inputConfig.mode === 'handle' && (
               <Handle
                 type="source"
                 position={Position.Left}
-                id={inputRuntime.name}
+                id={inputConfig.name}
                 style={{
                   position: 'relative',
                 }}
@@ -118,24 +121,24 @@ const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntim
                 `} />
               </Handle>
             )}
-            {inputRuntime.mode === 'input' && (
+            {inputConfig.mode === 'input' && (
               <NoSymbol
                 className="w-4 h-4 stroke-[1.5] text-secondary/70"
               />
             )}
-            {inputMeta.name}
+            {inputConfig.name}
             <button className="btn btn-ghost btn-circle btn-xs">
               <ArrowPath className="w-3 h-3" />
             </button>
           </span>
         )}
-        {outputMeta && outputRuntime && (
+        {outputMeta && outputConfig && (
           <span className="inline-flex items-center mr-1 ml-4">
-            {outputMeta.name}
+            {outputConfig.name}
             <Handle
               type="target"
               position={Position.Right}
-              id={outputRuntime.name}
+              id={outputConfig.name}
               style={{
                 position: 'relative',
               }}
@@ -156,11 +159,12 @@ const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, outputMeta, outputRuntim
         )}
       </div>
       <div>
-        {inputMeta && inputRuntime && inputRuntime.mode === 'input' && (
+        {inputMeta && inputRuntime && inputConfig && inputConfig.mode === 'input' && (
           <EntryInput
             nodeId={nodeId}
             meta={inputMeta}
             runtime={inputRuntime}
+            config={inputConfig}
           />
         )}
       </div>
@@ -201,12 +205,14 @@ export const BaseNode = (props: NodeProps<AFNode>) => {
         <div className="flex flex-col pb-3">
           {sortedInputEntries.map((entry, index) => (
             <BaseNodeRow
-              key={entry.runtime.name}
+              key={entry.meta.name}
               nodeId={id}
               inputMeta={entry.meta}
               inputRuntime={entry.runtime}
+              inputConfig={entry.config}
               outputMeta={nodeMeta.outputs[index]}
-              outputRuntime={data.outputs[index]}
+              outputRuntime={data.outputs[index]?.runtime}
+              outputConfig={data.outputs[index]?.config}
             />
           ))}
         </div>

@@ -143,14 +143,20 @@ function cleanContextMenuItem(item: ContextMenuItem): ContextMenuItem | undefine
   if (!item.subMenu) {
     return !!item.onClick ? item : undefined;
   } else {
-    item.subMenu.items = cleanContextItems(item.subMenu.items);
-    if (item.subMenu.items.length === 0) return undefined;
-    return item;
+    const subMenuItems = cleanContextItems(item.subMenu.items);
+    if (subMenuItems.length === 0) return undefined;
+    return {
+      ...item,
+      subMenu: {
+        ...item.subMenu,
+        items: subMenuItems,
+      }
+    };
   }
 }
 
 function cleanContextItems(items: ContextMenuItem[]): ContextMenuItem[] {
-  items = items.filter(item => cleanContextMenuItem(item));
+  items = items.map(item => cleanContextMenuItem(item)).filter(item => !!item);
   if (items.length === 0) return [];
   if (items.some(item => item.type !== 'separator')) {
     return items;

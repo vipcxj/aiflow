@@ -35,9 +35,9 @@ function getNodeData(state: FlowState, id: string) {
   return getNode(state, id)?.data;
 }
 
-function getNodeEntry(node: NodeData, name: string, type: 'input' | 'output') {
+function getNodeEntryData(node: NodeData, name: string, type: 'input' | 'output') {
   const entries = type === 'input' ? node.inputs : node.outputs;
-  return entries.find(entry => entry.name === name);
+  return entries.find(entry => entry.config.name === name);
 }
 
 export type WorkspaceState = {
@@ -234,9 +234,9 @@ const _setNodeEntryData = workspacesAdapter.undoableReducer((state: WorkspacesSt
   if (!node) {
     return;
   }
-  const entry = getNodeEntry(node, action.payload.entryId, action.payload.type);
-  if (entry && entry.mode === 'input') {
-    entry.data = action.payload.data;
+  const entry = getNodeEntryData(node, action.payload.entryId, action.payload.type);
+  if (entry && entry.config.mode === 'input') {
+    entry.runtime.data = action.payload.data;
   }
 });
 
