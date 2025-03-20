@@ -10,14 +10,12 @@
 .react-flow__handle-left {
   top: auto;
   left: auto;
-  margin-right: 4px;
   transform: translateX(0);
 }
 
 .react-flow__handle-right {
   top: auto;
   right: auto;
-  margin-left: 4px;
   transform: translateX(0);
 }
 

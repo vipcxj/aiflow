@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { buildCreateHistoryAdapter, createHistoryAdapter } from 'history-adapter/redux';
+import { createHistoryAdapter } from 'history-adapter/redux';
 import type {
   NodeChange,
   EdgeChange,
@@ -16,6 +16,10 @@ import { createNode } from '@/data/utils';
 import { globalNodeMetas } from '@/data/nodes';
 import { useAppDispatch } from '../hooks';
 import { useEffect } from 'react';
+import { 
+  isNormalizedUnionNodeEntryType, 
+  isNodeEntrySimpleTypeSupportInput 
+} from '@/data/guard';
 
 export type FlowState = {
   nodes: AFNode[];
@@ -38,6 +42,12 @@ function getNodeData(state: FlowState, id: string) {
 function getNodeEntryData(node: NodeData, name: string, type: 'input' | 'output') {
   const entries = type === 'input' ? node.inputs : node.outputs;
   return entries.find(entry => entry.config.name === name);
+}
+
+function getNodeEntryMetaAndData(nodeMeta: NodeMeta, nodeData: NodeData, name: string, type: 'input' | 'output') {
+  const entryMeta = type === 'input' ? nodeMeta.inputs.find(entry => entry.name === name) : nodeMeta.outputs.find(entry => entry.name === name);
+  const entryData = type === 'input' ? nodeData.inputs.find(entry => entry.config.name === name) : nodeData.outputs.find(entry => entry.config.name === name);
+  return entryMeta && entryData && { entryMeta, entryData };
 }
 
 export type WorkspaceState = {
@@ -238,6 +248,99 @@ const _setNodeEntryData = workspacesAdapter.undoableReducer((state: WorkspacesSt
   if (entry && entry.config.mode === 'input') {
     entry.runtime.data = action.payload.data;
   }
+  markDirty(state, true);
+});
+
+const _switchNodeEntryMode = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<{ nodeId: string, entryId: string }>) => {
+  const workspace = currentWorkspace(state);
+  const flow = currentFlow(workspace);
+  const nodeData = getNodeData(flow, action.payload.nodeId);
+  if (!nodeData) {
+    console.error(`Node ${action.payload.nodeId} not found`);
+    return;
+  }
+  const nodeMeta = getNodeMeta(workspace, state.nodeMetas, nodeData.meta);
+  if (!nodeMeta) {
+    console.error(`NodeMeta of node ${nodeData.meta.id}-${nodeData.meta.version} not found`);
+    return;
+  }
+  const entryMetaAndData = getNodeEntryMetaAndData(nodeMeta, nodeData, action.payload.entryId, 'input');
+  if (!entryMetaAndData) {
+    console.error(`Entry ${action.payload.nodeId}.${action.payload.entryId} not found`);
+    return;
+  }
+  const { entryMeta, entryData } = entryMetaAndData;
+  let changed = false;
+  if (entryData.config.mode === 'handle') {
+    if (isNormalizedUnionNodeEntryType(entryMeta.type)) {
+      for (let i = 0; i < entryMeta.type.length; i++) {
+        const type = entryMeta.type[i];
+        if (isNodeEntrySimpleTypeSupportInput(type)) {
+          changed = true;
+          entryData.config.mode = 'input';
+          entryData.config.modeIndex = i;
+          break;
+        }
+      }
+    } else if (isNodeEntrySimpleTypeSupportInput(entryMeta.type)) {
+      changed = true;
+      entryData.config.mode = 'input';
+      entryData.config.modeIndex = 0;
+    }
+    if (changed) {
+      flow.edges = flow.edges.filter(edge => {
+        return (edge.source !== action.payload.nodeId && edge.target !== action.payload.nodeId)
+         || (edge.source === action.payload.nodeId && edge.sourceHandle !== action.payload.entryId)
+         || (edge.target === action.payload.nodeId && edge.targetHandle !== action.payload.entryId);
+      });
+    }
+  } else {
+    if (isNormalizedUnionNodeEntryType(entryMeta.type)) {
+      let modeIndex = entryData.config.modeIndex;
+      let firstIndex = -1;
+      let foundPrev = modeIndex < 0;
+      let foundCur = false;
+      for (let i = 0; i < entryMeta.type.length; i++) {
+        const type = entryMeta.type[i];
+        if (isNodeEntrySimpleTypeSupportInput(type)) {
+          if (firstIndex === -1) {
+            firstIndex = i;
+          }
+          if (foundPrev) {
+            foundCur = true;
+            changed = true;
+            entryData.config.mode = 'input';
+            entryData.config.modeIndex = i;
+            break;
+          } else if (modeIndex === i) {
+            foundPrev = true;
+          }
+        }
+      }
+      if (!foundCur) {
+        if (entryMeta.disableHandle) {
+          changed = true;
+          entryData.config.mode = 'input';
+          entryData.config.modeIndex = firstIndex;
+        } else {
+          changed = true;
+          entryData.config.mode = 'handle';
+          entryData.config.modeIndex = -1;
+        }
+      }
+    } else if (!entryMeta.disableHandle) {
+      changed = true;
+      entryData.config.mode = 'handle';
+      entryData.config.modeIndex = -1;
+    } else {
+      changed = true;
+      entryData.config.mode = 'input';
+      entryData.config.modeIndex = 0;
+    }
+  }
+  if  (changed) {
+    markDirty(state, true);
+  }
 });
 
 const _addEdge = workspacesAdapter.undoableReducer((state: WorkspacesState, action: PayloadAction<Connection>) => {
@@ -275,10 +378,6 @@ const _applyEdgesChange = workspacesAdapter.undoableReducer((state: WorkspacesSt
   markDirty(state, true);
 });
 
-const isUndoable = (action: PayloadAction) => {
-  return true;
-}
-
 export const flowSlice = createSlice({
   name: 'flow',
   initialState,
@@ -289,6 +388,7 @@ export const flowSlice = createSlice({
     addNode: create.reducer<PayloadAddNewNode>(_addNode),
     removeNode: create.reducer<string>(_removeNode),
     setNodeEntryData: create.reducer<PayloadSetNodeEntryData>(_setNodeEntryData),
+    switchNodeEntryMode: create.reducer<{ nodeId: string, entryId: string }>(_switchNodeEntryMode),
     addEdge: create.reducer<Connection>(_addEdge),
     setNodes: create.reducer<AFNode[]>(_setNodes),
     setEdges: create.reducer<AFEdge[]>(_setEdges),
@@ -334,6 +434,7 @@ export const {
   addNode,
   removeNode,
   setNodeEntryData,
+  switchNodeEntryMode,
   addEdge,
   setNodes,
   setEdges,
