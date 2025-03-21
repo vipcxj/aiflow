@@ -1,4 +1,3 @@
-import exp from 'constants';
 import type { RecommandLevel } from './enum';
 
 export type NodeRuntime = 'frontend' | 'backend' | 'prefer-frontend' | 'prefer-backend' | 'not-care';
@@ -20,7 +19,8 @@ export type NormalizedNeverType = NeverType;
 export type NumberType = {
   name: 'number';
   enum?: number[];
-  range?: [number, number];
+  min?: number;
+  max?: number;
   default?: number;
   integer?: boolean;
 };
@@ -45,6 +45,7 @@ export type NormalizedStringType = StringType;
 
 export type BoolType = {
   name: 'bool';
+  literal?: boolean;
   default?: boolean;
 };
 
@@ -100,18 +101,22 @@ export type NormalizedDictType = {
   }
 };
 
+export type NDArrayDType = 'int32' | 'float32' | 'float64';
+
 export type NDArrayType = {
   name: 'ndarray';
   shape?: number[];
-  dtype?: 'int32' | 'float32' | 'float64';
+  dtype?: NDArrayDType;
 };
 
 export type NormalizedNDArrayType = NDArrayType;
 
+export type TorchTensorDType = 'int32' | 'float32' | 'float64';
+
 export type TorchTensorType = {
   name: 'torch-tensor';
   shape?: number[];
-  dtype?: 'int32' | 'float32' | 'float64';
+  dtype?: TorchTensorDType;
 };
 
 export type NormalizedTorchTensorType = TorchTensorType;
@@ -204,6 +209,7 @@ export type NodeEntryConfig = {
 }
 
 export type NodeEntryRuntime = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
   type?: NormalizedNodeEntryType;
 };

@@ -2,7 +2,8 @@ import type { NormalizedAnyType, NormalizedNumberType, NormalizedStringType, Nor
 import { isSimpleArrayShape, isNormalizedUnionNodeEntryType } from "./guard";
 import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum } from "./utils";
 
-function compareNodeEntryAnyType(a: NormalizedAnyType, b: NormalizedAnyType): number {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function compareNodeEntryAnyType(_a: NormalizedAnyType, _b: NormalizedAnyType): number {
   return 0;
 }
 
@@ -26,10 +27,22 @@ function compareNodeEntryNumberType(a: NormalizedNumberType, b: NormalizedNumber
   } else {
     if (a.integer !== b.integer) {
       return a.integer ? -1 : 1;
-    } else if (a.range && b.range) {
-      return a.range[0] - b.range[0] || a.range[1] - b.range[1];
-    } else if (a.range || b.range) {
-      return a.range ? -1 : 1;
+    } else if (a.min !== b.min) {
+      if (typeof a.min === 'number' && typeof b.min === 'number') {
+        return a.min - b.min;
+      } else if (typeof a.min === 'number') {
+        return -1;
+      } else {
+        return 1;
+      }
+    } else if (a.max !== b.max) {
+      if (typeof a.max === 'number' && typeof b.max === 'number') {
+        return a.max - b.max;
+      } else if (typeof a.max === 'number') {
+        return -1;
+      } else {
+        return 1;
+      }
     } else {
       return 0;
     }
@@ -95,7 +108,19 @@ function compareNodeEntryStringType(a: NormalizedStringType, b: NormalizedString
 }
 
 function compareNodeEntryBoolType(a: NormalizedBoolType, b: NormalizedBoolType): number {
-  return 0;
+  if (a.literal !== b.literal) {
+    if (typeof a.literal === 'boolean') {
+      if (typeof b.literal === 'boolean') {
+        return a.literal ? -1 : 1;
+      } else {
+        return -1;
+      }
+    } else {
+      return 1;
+    }
+  } else {
+    return 0;
+  }
 }
 
 function compareNodeEntryArrayType(a: NormalizedArrayType, b: NormalizedArrayType): number {

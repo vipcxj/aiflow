@@ -1,5 +1,5 @@
 import { compareNodeEntryType } from "./compare";
-import type { NumberType, StringType, NormalizedArrayType, NormalizedDictType, NormalizedNodeEntryType, NormalizedNDArrayType, NormalizedTorchTensorType, PythonObjectType, NormalizedSimpleType, NormalizedUnionType, NormalizedNeverType, NormalizedStringType, NormalizedNumberType, NormalizedPythonObjectType, SimpleType } from "./data-type";
+import type { NumberType, StringType, NormalizedArrayType, NormalizedDictType, NormalizedNodeEntryType, NormalizedNDArrayType, NormalizedTorchTensorType, PythonObjectType, NormalizedSimpleType, NormalizedUnionType, NormalizedNeverType, NormalizedStringType, NormalizedNumberType, NormalizedPythonObjectType, SimpleType, NormalizedBoolType } from "./data-type";
 import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType } from "./guard";
 import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum, rangeInclude } from "./utils";
 
@@ -15,7 +15,10 @@ export function combineNodeEntryNumberType(a: NumberType, b: NumberType): Number
   } else if (a.enum) {
     const aEnum = calcNodeEntryNumberTypeEnum(a) || [];
     if (aEnum.every(v => {
-      if (b.range && (v < b.range[0] || v > b.range[1])) {
+      if (typeof b.min === 'number' && v < b.min) {
+        return false;
+      }
+      if (typeof b.max === 'number' && v > b.max) {
         return false;
       }
       if (b.integer && !Number.isInteger(v)) {
@@ -31,20 +34,14 @@ export function combineNodeEntryNumberType(a: NumberType, b: NumberType): Number
     return combineNodeEntryNumberType(b, a);
   } else {
     if (!!a.integer === !!b.integer) {
-      if (a.range && b.range) {
-        return {
-          name: 'number',
-          range: [Math.min(a.range[0], b.range[0]), Math.max(a.range[1], b.range[1])],
-          integer: !!a.integer,
-        };
-      } else {
-        return {
-          name: 'number',
-          integer: !!a.integer,
-        }
+      return {
+        name: 'number',
+        min: typeof a.min === 'number' && typeof b.min === 'number' ? Math.min(a.min, b.min) : undefined,
+        max: typeof a.max === 'number' && typeof b.max === 'number' ? Math.max(a.max, b.max) : undefined,
+        integer: !!a.integer,
       }
     } else if (a.integer) {
-      if (rangeInclude(b.range, a.range)) {
+      if (rangeInclude([b.min, b.max], [a.min, a.max])) {
         return b;
       } else {
         return undefined;
@@ -90,6 +87,22 @@ export function combineNodeEntryStringType(a: StringType, b: StringType): String
     return {
       name: 'string',
       constraints: [...(a.constraints || []), ...(b.constraints || [])],
+    }
+  }
+}
+
+export function combineNodeEntryBoolType(a: NormalizedBoolType, b: NormalizedBoolType): NormalizedBoolType {
+  if (a.literal === b.literal) {
+    return a;
+  } else {
+    if (typeof a.literal === 'boolean') {
+      if (typeof b.literal === 'boolean') {
+        return { name: 'bool' };
+      } else {
+        return b;
+      }
+    } else {
+      return a;
     }
   }
 }
@@ -285,13 +298,12 @@ export function combineNodeEntryType(a: NormalizedNodeEntryType, b: NormalizedNo
         ab = combineNodeEntryNumberType(a, b as NormalizedNumberType);
         break;
       case 'bool':
-        return a; // Boolean 类型可以直接合并
+        return combineNodeEntryBoolType(a, b as NormalizedBoolType);
       case 'array':
         ab = combineNodeEntryArrayType(a, b as NormalizedArrayType);
         break;
       case 'dict':
-        ab = combineNodeEntryDictType(a, b as NormalizedDictType);
-        break;
+        return combineNodeEntryDictType(a, b as NormalizedDictType);
       case 'ndarray':
         ab = combineNodeEntryNDArrayType(a, b as NormalizedNDArrayType);
         break;

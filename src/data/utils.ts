@@ -1,51 +1,36 @@
 import { evaluate } from "@/lib/eval";
 import {
-  ArrayType,
-  DictType,
   NumberType,
   NodeEntry,
   NodeEntryRuntime,
   NodeEntryType,
   NodeMeta,
-  PythonObjectType,
   StringType,
-  SimpleType,
-  UnionType,
   NormalizedAnyType,
-  NormalizedNumberType,
-  NormalizedStringType,
-  NormalizedBoolType,
-  NormalizedArrayType,
-  NormalizedDictType,
-  NormalizedNDArrayType,
-  NormalizedTorchTensorType,
-  NormalizedUnionType,
   NormalizedNodeEntryType,
-  NormalizedPythonObjectType,
-  NormalizedArrayComplexType,
   NormalizedSimpleType,
-  NormalizedNeverType,
   NodeEntryConfig,
   NodeEntryData,
+  NormalizedDictType,
+  NormalizedNumberType,
 } from "./data-type";
 import { AFNode } from "./flow-type";
-import { 
-  isNodeEntrySimpleTypeSupportInput, 
-  isUnionNodeEntryType, 
-  isNormalizedUnionNodeEntryType, 
-  isAnyNodeEntryType, 
-  isNeverNodeEntryType, 
-  isStringNodeEntryType, 
-  isNumberNodeEntryType, 
-  isBoolNodeEntryType, 
-  isArrayNodeEntryType, 
-  isDictNodeEntryType, 
-  isNDArrayNodeEntryType, 
-  isTorchTensorNodeEntryType, 
-  isPythonObjectNodeEntryType, 
-  isNodeEntryTypeSupportInput, 
-  isSimpleArrayShape
+import {
+  isNodeEntrySimpleTypeSupportInput,
+  isUnionNodeEntryType,
+  isNormalizedUnionNodeEntryType,
+  isAnyNodeEntryType,
+  isNeverNodeEntryType,
+  isStringNodeEntryType,
+  isNumberNodeEntryType,
+  isBoolNodeEntryType,
+  isArrayNodeEntryType,
+  isDictNodeEntryType,
+  isNodeEntryTypeSupportInput
 } from "./guard";
+import NDArray from "./ndarray";
+import TorchTensor from "./torch-tensor";
+import PythonObject from "./python-object";
 
 export function isArrayShallowEquals<T>(a: T[], b: T[]): boolean {
   if (a.length !== b.length) {
@@ -86,20 +71,25 @@ export function getNodeEntryNthType(type: NormalizedNodeEntryType, n: number): N
   }
 }
 
+export function isValidNumberInNumberType(t: NormalizedNumberType, v: number): boolean {
+  if (typeof t.min === 'number' && v < t.min) {
+    return false;
+  }
+  if (typeof t.max === 'number' && v > t.max) {
+    return false;
+  }
+  if (t.integer && !Number.isInteger(v)) {
+    return false;
+  }
+  return true;
+}
+
 export function calcNodeEntryNumberTypeEnum(t: NumberType): number[] | undefined {
   if (!t.enum) {
     return undefined;
   }
-  if (t.range || t.integer) {
-    return t.enum.filter(v => {
-      if (t.range && (v < t.range[0] || v > t.range[1])) {
-        return false;
-      }
-      if (t.integer && !Number.isInteger(v)) {
-        return false;
-      }
-      return true;
-    });
+  if (typeof t.min === 'number' || typeof t.max === 'number' || t.integer) {
+    return t.enum.filter(v => isValidNumberInNumberType(t, v));
   } else {
     return t.enum;
   }
@@ -129,14 +119,36 @@ export function calcNodeEntryStringTypeEnum(t: StringType): string[] | undefined
   }
 }
 
-export function rangeInclude(a?: [number, number], b?: [number, number]): boolean {
-  if (!a) {
-    return true;
-  }
-  if (!b) {
+/**
+ * whether a include b
+ * @param a 
+ * @param b 
+ * @returns whether a include b
+ */
+export function rangeInclude(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
+  if (typeof b[0] !== 'number') {
     return false;
   }
-  return a[0] <= b[0] && a[1] >= b[1];
+  if (typeof b[1] !== 'number') {
+    return false;
+  }
+  const leftInclude = typeof a[0] !== 'number' || a[0] <= b[0];
+  const rightInclude = typeof a[1] !== 'number' || a[1] >= b[1];
+  return leftInclude && rightInclude;
+}
+
+export function rangeIntersect(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
+  // 获取a的左边界（如果未定义则为负无穷）
+  const aMin = a[0] === undefined ? Number.NEGATIVE_INFINITY : a[0];
+  // 获取a的右边界（如果未定义则为正无穷）
+  const aMax = a[1] === undefined ? Number.POSITIVE_INFINITY : a[1];
+  // 获取b的左边界（如果未定义则为负无穷）
+  const bMin = b[0] === undefined ? Number.NEGATIVE_INFINITY : b[0];
+  // 获取b的右边界（如果未定义则为正无穷） 
+  const bMax = b[1] === undefined ? Number.POSITIVE_INFINITY : b[1];
+
+  // 两个范围相交的条件是：a的最小值 <= b的最大值 且 b的最小值 <= a的最大值
+  return aMin <= bMax && bMin <= aMax;
 }
 
 export function validateNodeEntryStringData(t: StringType, data: string): boolean {
@@ -188,6 +200,7 @@ class ValError extends Error {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function isNodeEntryDataValid(entry: NodeEntry, data: any, optional: boolean = true): boolean {
   if (data === undefined || data === null) {
     return optional;
@@ -237,7 +250,9 @@ export function isNodeEntryDataValid(entry: NodeEntry, data: any, optional: bool
  * @param type entry type
  * @returns default value of the entry type
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryType): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let defaultValue: any;
   if ("default" in entryType && entryType.default !== undefined && entryType.default !== null) {
     defaultValue = entryType.default;
@@ -262,6 +277,64 @@ export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryTy
     return getNodeEntryDefaultData(entry, entryType[0]);
   }
   return defaultValue;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getTypeFromData(data: any): NormalizedNodeEntryType {
+  if (typeof data === 'undefined' || data === null) {
+    return {
+      name: 'never',
+    };
+  } else if (typeof data === 'number') {
+    return {
+      name: 'number',
+      enum: [data],
+    };
+  } else if (typeof data === 'string') {
+    return {
+      name: 'string',
+      enum: [data],
+    };
+  } else if (typeof data === 'boolean') {
+    return {
+      name: 'bool',
+      literal: data,
+    };
+  } else if (Array.isArray(data)) {
+    return {
+      name: 'array',
+      shape: data.map(getTypeFromData),
+    };
+  } else if (data instanceof NDArray) {
+    return {
+      name: 'ndarray',
+      dtype: data.dtype,
+      shape: data.shape,
+    };
+  } else if (data instanceof TorchTensor) {
+    return {
+      name: 'torch-tensor',
+      dtype: data.dtype,
+      shape: data.shape,
+    };
+  } else if (data instanceof PythonObject) {
+    return {
+      name: 'python-object',
+      type: data.type,
+    };
+  } else if (typeof data === 'object') {
+    return {
+      name: 'dict',
+      keys: Object.keys(data).reduce<NonNullable<NormalizedDictType['keys']>>((acc, key) => {
+        acc[key] = getTypeFromData(data[key]);
+        return acc;
+      }, {}),
+    };
+  } else {
+    return {
+      name: 'any',
+    };
+  }
 }
 
 export type NodeEntryDataWithMeta = {

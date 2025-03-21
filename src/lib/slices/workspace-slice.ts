@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { createHistoryAdapter } from 'history-adapter/redux';
 import type {
@@ -144,7 +145,13 @@ function currentFlow(state: WorkspaceState): FlowState {
   }
   const name = state.path[state.path.length - 1];
   const { id, version } = parsePathName(name);
-  return state.embeddedNodeImpls.find(impl => impl.meta.id === id && impl.meta.version === version)?.impl!;
+  const flow = state.embeddedNodeImpls.find(impl => impl.meta.id === id && impl.meta.version === version)?.impl;
+  if (!flow) {
+    console.error(`Flow ${name} not found, return main flow instead.`);
+    return state.main;
+  } else {
+    return flow;
+  }
 }
 
 function currentFlowFromWS(state: WorkspacesState): FlowState {
@@ -185,7 +192,6 @@ const __newWorkspace = (state: WorkspacesState): void => {
   state.current = id;
 };
 
-//@ts-ignore
 const _newWorkspace = workspacesAdapter.undoableReducer(__newWorkspace);
 
 const __closeWorkspace = (state: WorkspacesState, action: PayloadAction<string>): void => {
@@ -296,7 +302,7 @@ const _switchNodeEntryMode = workspacesAdapter.undoableReducer((state: Workspace
     }
   } else {
     if (isNormalizedUnionNodeEntryType(entryMeta.type)) {
-      let modeIndex = entryData.config.modeIndex;
+      const modeIndex = entryData.config.modeIndex;
       let firstIndex = -1;
       let foundPrev = modeIndex < 0;
       let foundCur = false;

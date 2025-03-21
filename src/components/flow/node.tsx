@@ -51,6 +51,7 @@ type EntryInputProps = {
 const EntryInput = ({ nodeId, meta, runtime, config }: EntryInputProps) => {
   const dispatch = useAppDispatch();
   const entryName = meta.name;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const onValueChange = useCallback((value: any) => {
     dispatch(setNodeEntryData({
       nodeId,
@@ -60,6 +61,7 @@ const EntryInput = ({ nodeId, meta, runtime, config }: EntryInputProps) => {
     }));
   }, [dispatch, nodeId, entryName]);
   const onChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let data: any = e.target.value;
     if (isBoolNodeEntryType(meta.type)) {
       data = e.target.checked;
@@ -110,8 +112,8 @@ const EntryInput = ({ nodeId, meta, runtime, config }: EntryInputProps) => {
   }
 };
 
-const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, inputConfig, outputMeta, outputRuntime, outputConfig }: BaseNodeRowProps) => {
-  let showSwitchBtn = inputMeta && (
+const BaseNodeRow = ({ nodeId, inputMeta, inputRuntime, inputConfig, outputMeta, outputConfig }: BaseNodeRowProps) => {
+  const showSwitchBtn = inputMeta && (
     inputMeta.disableHandle ? isNodeEntryTypeSupportInputs(inputMeta.type) : isNodeEntryTypeSupportInput(inputMeta.type)
   ) || false;
   const dispatch = useAppDispatch();
