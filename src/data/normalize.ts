@@ -1,9 +1,18 @@
 import { combineNodeEntryUnionType } from "./combine";
+import { compareNodeEntryType } from "./compare";
 import type { StringType, ArrayType, NormalizedArrayType, DictType, NormalizedDictType, NormalizedNodeEntryType, UnionType, NormalizedAnyType, NormalizedNeverType, NormalizedSimpleType, NodeEntryType, NormalizedUnionType } from "./data-type";
-import { isSimpleArrayShape, isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isStringNodeEntryType, isNumberNodeEntryType, isBoolNodeEntryType, isArrayNodeEntryType, isDictNodeEntryType, isNDArrayNodeEntryType, isTorchTensorNodeEntryType, isPythonObjectNodeEntryType, isUnionNodeEntryType } from "./guard";
+import { isSimpleArrayShape, isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isStringNodeEntryType, isNumberNodeEntryType, isBoolNodeEntryType, isArrayNodeEntryType, isDictNodeEntryType, isNDArrayNodeEntryType, isTorchTensorNodeEntryType, isPythonObjectNodeEntryType, isUnionNodeEntryType, isComplexArrayShape } from "./guard";
 
 function normalizeNodeEntryStringType(type: StringType): StringType {
   if (type.constraints) {
+    for (const c of type.constraints) {
+      if (c.pattern) {
+        c.pattern = c.pattern.trim();
+        if (c.pattern.length === 0) {
+          delete c.pattern;
+        }
+      }
+    }
     type.constraints.sort((c1, c2) => {
       if (c1.pattern && c2.pattern) {
         return c1.pattern.localeCompare(c2.pattern);
@@ -32,17 +41,42 @@ function normalizeNodeEntryStringType(type: StringType): StringType {
   return type;
 }
 
+/**
+ * normalize array type. All shape [t, t, ...] will be normalized to [t, n]
+ * @param type 
+ * @returns normalized array type
+ */
 export function normalizeNodeEntryArrayType(type: ArrayType): NormalizedArrayType {
   if (isSimpleArrayShape(type.shape)) {
     return {
       name: 'array',
       shape: [normalizeNodeEntryType(type.shape[0]), type.shape[1]],
     };
+  } else if (isComplexArrayShape(type.shape)) {
+    const shape = type.shape.map(normalizeNodeEntryType);
+    if (shape.length === 1) {
+      return {
+        name: 'array',
+        shape: [shape[0], 1],
+      };
+    } else {
+      const t = shape[0];
+      for (let i = 1; i < shape.length; i++) {
+        const c = compareNodeEntryType(t, shape[i]);
+        if (c !== 0) {
+          return {
+            name: 'array',
+            shape: shape,
+          };
+        }
+      }
+      return {
+        name: 'array',
+        shape: [t, shape.length],
+      };
+    }
   } else {
-    return {
-      name: 'array',
-      shape: type.shape.map(normalizeNodeEntryType),
-    };
+    throw new Error(`Unknown array shape: ${type.shape}`);
   }
 }
 

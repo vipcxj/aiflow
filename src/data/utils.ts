@@ -13,6 +13,7 @@ import {
   NodeEntryData,
   NormalizedDictType,
   NormalizedNumberType,
+  StringConstraint,
 } from "./data-type";
 import { AFNode } from "./flow-type";
 import {
@@ -95,24 +96,26 @@ export function calcNodeEntryNumberTypeEnum(t: NumberType): number[] | undefined
   }
 }
 
+export function isValidStringByConstraint(c: StringConstraint, v: string): boolean {
+  if (c.pattern && !new RegExp(c.pattern).test(v)) {
+    return false;
+  }
+  if (typeof c.lenMin !== 'undefined' && v.length < c.lenMin) {
+    return false;
+  }
+  if (typeof c.lenMax !== 'undefined' && v.length > c.lenMax) {
+    return false;
+  }
+  return true;
+}
+
 export function calcNodeEntryStringTypeEnum(t: StringType): string[] | undefined {
   if (!t.enum) {
     return undefined;
   }
   if (t.constraints && t.constraints.length > 0) {
     return t.enum.filter(v => {
-      return t.constraints!.some(c => {
-        if (c.pattern && !new RegExp(c.pattern).test(v)) {
-          return false;
-        }
-        if (typeof c.lenMin !== 'undefined' && v.length < c.lenMin) {
-          return false;
-        }
-        if (typeof c.lenMax !== 'undefined' && v.length > c.lenMax) {
-          return false;
-        }
-        return true
-      });
+      return t.constraints!.some(c => isValidStringByConstraint(c, v));
     });
   } else {
     return t.enum;
