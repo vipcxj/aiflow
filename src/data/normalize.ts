@@ -1,9 +1,13 @@
 import { combineNodeEntryUnionType } from "./combine";
 import { compareNodeEntryType } from "./compare";
-import type { StringType, ArrayType, NormalizedArrayType, DictType, NormalizedDictType, NormalizedNodeEntryType, UnionType, NormalizedAnyType, NormalizedNeverType, NormalizedSimpleType, NodeEntryType, NormalizedUnionType } from "./data-type";
+import type { StringType, ArrayType, NormalizedArrayType, DictType, NormalizedDictType, NormalizedNodeEntryType, UnionType, NormalizedAnyType, NormalizedNeverType, NormalizedSimpleType, NodeEntryType, NormalizedUnionType, NormalizedDictTypeKeys, NumberType, NormalizedNumberType, NormalizedStringType, BoolType, NormalizedBoolType, NormalizedNDArrayType, NDArrayType, TorchTensorType, NormalizedTorchTensorType, PythonObjectType, NormalizedPythonObjectType } from "./data-type";
 import { isSimpleArrayShape, isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isStringNodeEntryType, isNumberNodeEntryType, isBoolNodeEntryType, isArrayNodeEntryType, isDictNodeEntryType, isNDArrayNodeEntryType, isTorchTensorNodeEntryType, isPythonObjectNodeEntryType, isUnionNodeEntryType, isComplexArrayShape } from "./guard";
 
-function normalizeNodeEntryStringType(type: StringType): StringType {
+export function normalizeNodeEntryNumberType(type: NumberType): NormalizedNumberType {
+  return type;
+}
+
+export function normalizeNodeEntryStringType(type: StringType): NormalizedStringType {
   if (type.constraints) {
     for (const c of type.constraints) {
       if (c.pattern) {
@@ -38,6 +42,10 @@ function normalizeNodeEntryStringType(type: StringType): StringType {
       return 0;
     });
   }
+  return type;
+}
+
+export function normalizeNodeEntryBoolType(type: BoolType): NormalizedBoolType {
   return type;
 }
 
@@ -80,11 +88,18 @@ export function normalizeNodeEntryArrayType(type: ArrayType): NormalizedArrayTyp
   }
 }
 
-function normalizeNodeEntryDictType(type: DictType): NormalizedDictType {
+export function normalizeNodeEntryDictType(type: DictType): NormalizedDictType {
   if (type.keys) {
-    const keys: Record<string, NormalizedNodeEntryType> = {};
+    const keys: NormalizedDictTypeKeys = {};
     for (const key in type.keys) {
-      keys[key] = normalizeNodeEntryType(type.keys[key]);
+      const t = normalizeNodeEntryType(type.keys[key].type);
+      if (isNeverNodeEntryType(t)) {
+        continue;
+      }
+      keys[key] = {
+        type: t,
+        optional: type.keys[key].optional || false,
+      };
     }
     return {
       name: 'dict',
@@ -93,6 +108,18 @@ function normalizeNodeEntryDictType(type: DictType): NormalizedDictType {
   } else {
     return { name: 'dict' };
   }
+}
+
+export function normalizeNodeEntryNDArrayType(type: NDArrayType): NormalizedNDArrayType {
+  return type;
+}
+
+export function normalizeNodeEntryTorchTensorType(type: TorchTensorType): NormalizedTorchTensorType {
+  return type;
+}
+
+export function normalizeNodeEntryPythonObjectType(type: PythonObjectType): NormalizedPythonObjectType {
+  return type;
 }
 
 export function normalizeNodeEntryUnionType(type: UnionType): NormalizedNodeEntryType {
@@ -148,19 +175,19 @@ export function normalizeNodeEntryType(type: NodeEntryType): NormalizedNodeEntry
   } else if (isStringNodeEntryType(type)) {
     return normalizeNodeEntryStringType(type);
   } else if (isNumberNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryNumberType(type);
   } else if (isBoolNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryBoolType(type);
   } else if (isArrayNodeEntryType(type)) {
     return normalizeNodeEntryArrayType(type);
   } else if (isDictNodeEntryType(type)) {
     return normalizeNodeEntryDictType(type);
   } else if (isNDArrayNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryNDArrayType(type);
   } else if (isTorchTensorNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryTorchTensorType(type);
   } else if (isPythonObjectNodeEntryType(type)) {
-    return type;
+    return normalizeNodeEntryPythonObjectType(type);
   } else if (isUnionNodeEntryType(type)) {
     return normalizeNodeEntryUnionType(type);
   } else {

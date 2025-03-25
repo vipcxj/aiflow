@@ -1,9 +1,7 @@
-import { evaluate } from "@/lib/eval";
-import {
+import type {
   NumberType,
   NodeEntry,
   NodeEntryRuntime,
-  NodeEntryType,
   NodeMeta,
   StringType,
   NormalizedAnyType,
@@ -15,7 +13,7 @@ import {
   NormalizedNumberType,
   StringConstraint,
 } from "./data-type";
-import { AFNode } from "./flow-type";
+import type { AFNode } from "./flow-type";
 import {
   isNodeEntrySimpleTypeSupportInput,
   isUnionNodeEntryType,
@@ -128,7 +126,7 @@ export function calcNodeEntryStringTypeEnum(t: StringType): string[] | undefined
  * @param b 
  * @returns whether a include b
  */
-export function rangeInclude(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
+export function isRangeInclude(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
   if (typeof b[0] !== 'number') {
     return false;
   }
@@ -140,7 +138,7 @@ export function rangeInclude(a: [number | undefined, number | undefined], b: [nu
   return leftInclude && rightInclude;
 }
 
-export function rangeIntersect(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
+export function isRangeIntersect(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): boolean {
   // 获取a的左边界（如果未定义则为负无穷）
   const aMin = a[0] === undefined ? Number.NEGATIVE_INFINITY : a[0];
   // 获取a的右边界（如果未定义则为正无穷）
@@ -152,6 +150,25 @@ export function rangeIntersect(a: [number | undefined, number | undefined], b: [
 
   // 两个范围相交的条件是：a的最小值 <= b的最大值 且 b的最小值 <= a的最大值
   return aMin <= bMax && bMin <= aMax;
+}
+
+export function calcRangeIntersection(a: [number | undefined, number | undefined], b: [number | undefined, number | undefined]): [number | undefined, number | undefined] | undefined {
+    // 获取a的左边界（如果未定义则为负无穷）
+    const aMin = a[0] === undefined ? Number.NEGATIVE_INFINITY : a[0];
+    // 获取a的右边界（如果未定义则为正无穷）
+    const aMax = a[1] === undefined ? Number.POSITIVE_INFINITY : a[1];
+    // 获取b的左边界（如果未定义则为负无穷）
+    const bMin = b[0] === undefined ? Number.NEGATIVE_INFINITY : b[0];
+    // 获取b的右边界（如果未定义则为正无穷） 
+    const bMax = b[1] === undefined ? Number.POSITIVE_INFINITY : b[1];
+
+    // 两个范围相交的条件是：a的最小值 <= b的最大值 且 b的最小值 <= a的最大值
+    const intersection = [Math.max(aMin, bMin), Math.min(aMax, bMax)];
+    if (intersection[0] > intersection[1]) {
+        return undefined;
+    } else {
+        return [intersection[0] === Number.NEGATIVE_INFINITY ? undefined : intersection[0], intersection[1] === Number.POSITIVE_INFINITY ? undefined : intersection[1]];
+    }
 }
 
 export function validateNodeEntryStringData(t: StringType, data: string): boolean {
@@ -196,90 +213,28 @@ export function getNodeEntryAvailableTypes(entry: NodeEntry): NormalizedAnyType 
   }
 }
 
-class ValError extends Error {
-  constructor(msg: string) {
-    super(msg);
-    this.name = 'ValError';
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function isNodeEntryDataValid(entry: NodeEntry, data: any, optional: boolean = true): boolean {
-  if (data === undefined || data === null) {
-    return optional;
-  }
-  if (isNumberNodeEntryType(entry.type)) {
-    if (typeof data !== 'number') {
-      return false;
-    }
-    if (entry.type.integer && !Number.isInteger(data)) {
-      return false;
-    }
-    if (entry.type.range && (data < entry.type.range[0] || data > entry.type.range[1])) {
-      return false;
-    }
-    if (entry.type.enum && !entry.type.enum.includes(data)) {
-      return false;
-    }
-  } else if (isBoolNodeEntryType(entry.type)) {
-    if (typeof data !== 'boolean') {
-      return false;
-    }
-  } else if (isStringNodeEntryType(entry.type)) {
-    if (!validateNodeEntryStringData(entry.type, data)) {
-      return false;
-    }
-  }
-  if (entry.verificationCode && entry.verificationCode.js) {
-    function assert(condition: boolean, msg: string) {
-      if (!condition) {
-        throw new ValError(msg);
-      }
-    }
-    try {
-      evaluate(entry.verificationCode.js, { assert, meta: entry, data });
-    } catch (e) {
-      if (!(e instanceof ValError)) {
-        console.error(e);
-      }
-      return false;
-    }
-  }
-  return true;
-}
-
 /**
  * get the default value of the entry type. maybe not valid.
  * @param type entry type
  * @returns default value of the entry type
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getNodeEntryDefaultData(entry: NodeEntry, entryType: NodeEntryType): any {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let defaultValue: any;
-  if ("default" in entryType && entryType.default !== undefined && entryType.default !== null) {
-    defaultValue = entryType.default;
-  } else if ("enum" in entryType && entryType.enum && entryType.enum.length > 0) {
-    defaultValue = entryType.enum[0];
-  } else if ("range" in entryType && entryType.range) {
-    defaultValue = entryType.range[0];
-    if (entryType.integer) {
-      defaultValue = Math.ceil(defaultValue);
-    }
-  } else if (isNumberNodeEntryType(entryType)) {
-    defaultValue = 0;
-  } else if (isStringNodeEntryType(entryType)) {
-    defaultValue = '';
-  } else if (isBoolNodeEntryType(entryType)) {
-    defaultValue = false;
-  } else if (isDictNodeEntryType(entryType)) {
-    defaultValue = {};
-  } else if (isArrayNodeEntryType(entryType)) {
-    defaultValue = [];
-  } else if (isUnionNodeEntryType(entryType) && entryType.length > 0) {
-    return getNodeEntryDefaultData(entry, entryType[0]);
+export function getNodeEntryDefaultData(type: NormalizedNodeEntryType): any {
+  if (isNumberNodeEntryType(type)) {
+    return 0;
+  } else if (isStringNodeEntryType(type)) {
+    return '';
+  } else if (isBoolNodeEntryType(type)) {
+    return false;
+  } else if (isArrayNodeEntryType(type)) {
+    return [];
+  } else if (isDictNodeEntryType(type)) {
+    return {};
+  } else if (isUnionNodeEntryType(type)) {
+    return getNodeEntryDefaultData(type[0]);
+  } else {
+    return undefined;
   }
-  return defaultValue;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -329,7 +284,10 @@ export function getTypeFromData(data: any): NormalizedNodeEntryType {
     return {
       name: 'dict',
       keys: Object.keys(data).reduce<NonNullable<NormalizedDictType['keys']>>((acc, key) => {
-        acc[key] = getTypeFromData(data[key]);
+        acc[key] = {
+          type: getTypeFromData(data[key]),
+          optional: false,
+        };
         return acc;
       }, {}),
     };
@@ -355,7 +313,7 @@ function createEntryData(entry: NodeEntry, input: boolean): NodeEntryData {
         modeIndex: 0,
       },
       runtime: {
-        data: getNodeEntryDefaultData(entry, entry.type),
+        data: getNodeEntryDefaultData(entry.type),
       },
     };
   } else {

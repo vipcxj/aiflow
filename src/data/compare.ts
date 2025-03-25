@@ -172,7 +172,10 @@ function compareNodeEntryDictType(a: NormalizedDictType, b: NormalizedDictType):
       if (ak !== bk) {
         return ak.localeCompare(bk);
       }
-      const c = compareNodeEntryType(a.keys[ak], b.keys[bk]);
+      if (!!a.keys[ak].optional !== !!b.keys[bk].optional) {
+        return a.keys[ak].optional ? -1 : 1;
+      }
+      const c = compareNodeEntryType(a.keys[ak].type, b.keys[bk].type);
       if (c !== 0) {
         return c;
       }

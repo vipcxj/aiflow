@@ -87,18 +87,28 @@ export type NormalizedArrayComplexType = {
   shape: NormalizedArrayComplexShape;
 }
 
+export type DictTypeKeys = {
+  [key: string]: {
+    type: NodeEntryType;
+    optional?: boolean;
+  };
+};
+
 export type DictType = {
   name: 'dict';
-  keys?: {
-    [key: string]: NodeEntryType;
-  }
+  keys?: DictTypeKeys;
+};
+
+export type NormalizedDictTypeKeys = {
+  [key: string]: {
+    type: NormalizedNodeEntryType;
+    optional: boolean;
+  };
 };
 
 export type NormalizedDictType = {
   name: 'dict';
-  keys?: {
-    [key: string]: NormalizedNodeEntryType;
-  }
+  keys?: NormalizedDictTypeKeys;
 };
 
 export type NDArrayDType = 'int32' | 'float32' | 'float64';
@@ -192,6 +202,14 @@ export type NodeMeta = {
     js?: string;
     py?: string;
   };
+  executionCode?: {
+    js?: string;
+    py?: string;
+  };
+  evalTypeCode?: {
+    js?: string;
+    py?: string;
+  };
   inputs: NodeEntry[];
   outputs: NodeEntry[];
   defaultRenderer: string;
@@ -211,6 +229,7 @@ export type NodeEntryConfig = {
 export type NodeEntryRuntime = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
+  ready: boolean;
   type?: NormalizedNodeEntryType;
 };
 

@@ -1,7 +1,7 @@
 import { useAppDispatch } from "@/lib/hooks";
-import { useCallback, useEffect } from "react"
+import { DependencyList, useCallback, useEffect } from "react"
 import { closeContextMenu, openContextMenu } from "@/lib/slices/context-menu-slice";
-import { ContextMenuItem, ContextMenuItemMenu, ContextMenuState } from "./type";
+import { ContextMenuItem } from "./type";
 
 export function getAllContextMenus(): HTMLElement[] {
   // 获取菜单根元素
@@ -133,7 +133,8 @@ export type ContextMenuItemsEnchancer<C> = {
   enchance: (items: ContextMenuItem[], context?: C) => ContextMenuItem[];
 };
 
-export function useContextMenuItemsEnchancer<C>(enchanceFun: ContextMenuItemsEnchancer<C>['enchance'], deps: any[]): ContextMenuItemsEnchancer<C> {
+export function useContextMenuItemsEnchancer<C>(enchanceFun: ContextMenuItemsEnchancer<C>['enchance'], deps: DependencyList): ContextMenuItemsEnchancer<C> {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const enchance = useCallback(enchanceFun, deps);
   return { enchance };
 }
@@ -164,7 +165,7 @@ function cleanContextItems(items: ContextMenuItem[]): ContextMenuItem[] {
   return [];
 }
 
-export function useOpenContextMenu<T, C = any>(title: string, items: ContextMenuItem[], enchancer?: ContextMenuItemsEnchancer<C>) {
+export function useOpenContextMenu<T, C = unknown>(title: string, items: ContextMenuItem[], enchancer?: ContextMenuItemsEnchancer<C>) {
   const dispatch = useAppDispatch();
   const onContextMenu = useCallback((e: React.MouseEvent<T>) => {
     // 阻止事件冒泡和默认行为

@@ -43,13 +43,13 @@ export const Flow = () => {
   }, [_onNodeContextMenu, enchancer]);
   const onNodesChange = useCallback((changes: NodeChange<AFNode>[]) => {
     dispatch(applyNodesChange(changes));
-  }, [dispatch, applyNodesChange]);
+  }, [dispatch]);
   const onEdgesChange = useCallback((changes: EdgeChange<AFEdge>[]) => {
     dispatch(applyEdgesChange(changes));
-  }, [dispatch, applyEdgesChange]);
+  }, [dispatch]);
   const onConnect: OnConnect = useCallback((params) => {
     dispatch(addEdge(params));
-  }, []);
+  }, [dispatch]);
 
   const { theme } = useTheme();
   return (

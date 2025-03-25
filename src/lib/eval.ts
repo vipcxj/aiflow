@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function evaluate(code: string, args: Record<string, any> = {}) {       
   // Call is used to define where "this" within the evaluated code should reference.
   // eval does not accept the likes of eval.call(...) or eval.apply(...) and cannot

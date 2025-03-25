@@ -12,7 +12,7 @@ import {
   addEdge as addAFEdge,
 } from '@xyflow/react';
 import type { NodeData, NodeMeta, NodeMetaRef } from '@/data/data-type';
-import type { AFNode, AFEdge } from '@/data/flow-type';
+import type { AFNode, AFEdge, FlowState } from '@/data/flow-type';
 import { createNode } from '@/data/utils';
 import { globalNodeMetas } from '@/data/nodes';
 import { useAppDispatch } from '../hooks';
@@ -21,23 +21,11 @@ import {
   isNormalizedUnionNodeEntryType, 
   isNodeEntrySimpleTypeSupportInput 
 } from '@/data/guard';
-
-export type FlowState = {
-  nodes: AFNode[];
-  edges: AFEdge[];
-};
+import { getNodeData } from '@/data/flow-api';
 
 export type EmbeddedNodeImpl = {
   meta: NodeMeta;
   impl: FlowState;
-}
-
-function getNode(state: FlowState, id: string) {
-  return state.nodes.find(node => node.id === id);
-}
-
-function getNodeData(state: FlowState, id: string) {
-  return getNode(state, id)?.data;
 }
 
 function getNodeEntryData(node: NodeData, name: string, type: 'input' | 'output') {

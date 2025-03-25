@@ -60,10 +60,11 @@ const useAddNodeMenu = () => {
   const nodeMetaTree = useNodeMetaTree();
   const dispatch = useAppDispatch();
   const reactFlow = useReactFlow();
+  const screenToFlowPosition = reactFlow.screenToFlowPosition;
   const onMenuClick = useCallback((data: unknown, menuState: ContextMenuState) => {
     const nodeMeta = data as NodeMeta;
     const position = menuState.position || { x: 0, y: 0 };
-    const { x, y } = reactFlow.screenToFlowPosition(position);
+    const { x, y } = screenToFlowPosition(position);
     dispatch(addNode({
       meta: {
         id: nodeMeta.id,
@@ -72,7 +73,7 @@ const useAddNodeMenu = () => {
       x,
       y,
     }));
-  }, [dispatch, reactFlow.screenToFlowPosition]);
+  }, [dispatch, screenToFlowPosition]);
   return createAddNodeMenu(nodeMetaTree, onMenuClick);
 };
 

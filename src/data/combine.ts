@@ -1,7 +1,7 @@
 import { compareNodeEntryType } from "./compare";
-import type { NumberType, StringType, NormalizedArrayType, NormalizedDictType, NormalizedNodeEntryType, NormalizedNDArrayType, NormalizedTorchTensorType, PythonObjectType, NormalizedSimpleType, NormalizedUnionType, NormalizedNeverType, NormalizedStringType, NormalizedNumberType, NormalizedPythonObjectType, SimpleType, NormalizedBoolType } from "./data-type";
+import type { NumberType, StringType, NormalizedArrayType, NormalizedDictType, NormalizedNodeEntryType, NormalizedNDArrayType, NormalizedTorchTensorType, PythonObjectType, NormalizedSimpleType, NormalizedUnionType, NormalizedNeverType, NormalizedStringType, NormalizedNumberType, NormalizedPythonObjectType, SimpleType, NormalizedBoolType, NormalizedDictTypeKeys } from "./data-type";
 import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType } from "./guard";
-import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum, rangeInclude } from "./utils";
+import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum, isRangeInclude } from "./utils";
 
 export function combineNodeEntryNumberType(a: NumberType, b: NumberType): NumberType | undefined {
   if (a.enum && b.enum) {
@@ -41,7 +41,7 @@ export function combineNodeEntryNumberType(a: NumberType, b: NumberType): Number
         integer: !!a.integer,
       }
     } else if (a.integer) {
-      if (rangeInclude([b.min, b.max], [a.min, a.max])) {
+      if (isRangeInclude([b.min, b.max], [a.min, a.max])) {
         return b;
       } else {
         return undefined;
@@ -120,20 +120,23 @@ export function combineNodeEntryDictType(a: NormalizedDictType, b: NormalizedDic
   if (a.keys && b.keys) {
     // 合并两个字典的所有键
     const allKeys = new Set([...Object.keys(a.keys), ...Object.keys(b.keys)]);
-    const combinedKeys: Record<string, NormalizedNodeEntryType> = {};
+    const combinedKeys: NormalizedDictTypeKeys = {};
 
     // 尝试为每个键找到合适的类型
     for (const key of allKeys) {
-      const aType = a.keys[key];
-      const bType = b.keys[key];
+      const aKeys = a.keys[key];
+      const bKeys = b.keys[key];
 
-      if (!aType) {
-        combinedKeys[key] = bType;
-      } else if (!bType) {
-        combinedKeys[key] = aType;
+      if (!aKeys) {
+        combinedKeys[key] = bKeys;
+      } else if (!bKeys) {
+        combinedKeys[key] = aKeys;
       } else {
         // 两者都有这个键，需要计算它们值类型的并集
-        combinedKeys[key] = combineNodeEntryType(aType, bType);
+        combinedKeys[key] = {
+          type: combineNodeEntryType(aKeys.type, bKeys.type),
+          optional: !!aKeys.optional && !!bKeys.optional
+        };
       }
     }
 

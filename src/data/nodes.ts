@@ -38,3 +38,7 @@ export const globalNodeMetas: NodeMeta[] = [
     defaultRenderer: 'default',
   }
 ];
+
+export function getGlobalNodeMetas() {
+  return globalNodeMetas;
+}
