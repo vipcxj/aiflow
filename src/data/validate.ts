@@ -1,6 +1,6 @@
 import { evaluate } from "@/lib/eval";
 import type { NodeData, NodeEntry, NodeEntryConfig, NodeEntryRuntime, NodeMeta, NormalizedArrayType, NormalizedBoolType, NormalizedDictType, NormalizedNDArrayType, NormalizedNodeEntryType, NormalizedNumberType, NormalizedPythonObjectType, NormalizedSimpleType, NormalizedStringType, NormalizedTorchTensorType } from "./data-type";
-import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isSimpleArrayShape } from "./guard";
+import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isSimpleArrayShape } from "./data-guard";
 import NDArray from "./ndarray";
 import PythonObject from "./python-object";
 import TorchTensor from "./torch-tensor";

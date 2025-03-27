@@ -1,4 +1,5 @@
 import type { RecommandLevel } from './enum';
+import type { SubFlowState, TemplateRef } from './flow-type';
 
 export type NodeRuntime = 'frontend' | 'backend' | 'prefer-frontend' | 'prefer-backend' | 'not-care';
 export type NodeType = 'base';
@@ -140,11 +141,11 @@ export type NormalizedPythonObjectType = PythonObjectType;
 
 export type UnionType = NodeEntryType[];
 
-export type NodeEntryType = 
+export type NodeEntryType =
   AnyType
   | NeverType
   | StringType
-  | NumberType 
+  | NumberType
   | BoolType
   | ArrayType
   | DictType
@@ -155,9 +156,9 @@ export type NodeEntryType =
 
 export type SimpleType = Exclude<NodeEntryType, AnyType | NeverType | UnionType>;
 export type FlattenUnionType = SimpleType[];
-export type NormalizedSimpleType = 
+export type NormalizedSimpleType =
   NormalizedStringType
-  | NormalizedNumberType 
+  | NormalizedNumberType
   | NormalizedBoolType
   | NormalizedArrayType
   | NormalizedDictType
@@ -171,10 +172,10 @@ export type NormalizedUnionType = NormalizedSimpleType[];
 export type NormalizedNodeEntryType = NormalizedAnyType | NormalizedNeverType | NormalizedSimpleType | NormalizedUnionType;
 export type NormalizedNodeEntrySimpleTypeSupportInput =
   NormalizedStringType
-  | NormalizedNumberType 
+  | NormalizedNumberType
   | NormalizedBoolType;
 export type NormalizedNodeEntryComplexTypeSupportInput = NormalizedNodeEntrySimpleTypeSupportInput[];
-export type NormalizedNodeEntryTypeSupportInput = 
+export type NormalizedNodeEntryTypeSupportInput =
   NormalizedNodeEntrySimpleTypeSupportInput
   | NormalizedNodeEntryComplexTypeSupportInput;
 
@@ -190,34 +191,42 @@ export type NodeEntry = {
   };
 };
 
-export type NodeMeta = {
+type NodeMetaBase = {
   id: string;
-  version: string;
+  version?: string;
   title: string;
-  type: NodeType;
-  native: boolean;
-  impl?: string;
-  runtime: NodeRuntime
-  verificationCode?: {
-    js?: string;
-    py?: string;
-  };
-  executionCode?: {
-    js?: string;
-    py?: string;
-  };
-  evalTypeCode?: {
-    js?: string;
-    py?: string;
-  };
+};
+
+export type Code = {
+  code: string;
+}
+
+export type CodeRef = {
+  ref: string;
+}
+
+export type NativeNodeMeta = NodeMetaBase & {
+  type: 'native';
+  impls: {
+    [language: string]: Code | CodeRef;
+  }
+  checks?: Code | CodeRef;
+  types?: Code | CodeRef;
   inputs: NodeEntry[];
   outputs: NodeEntry[];
-  defaultRenderer: string;
 };
+
+export type CompoundNodeMeta = NodeMetaBase & {
+  type: 'compound';
+  flow: SubFlowState;
+  template?: TemplateRef;
+};
+
+export type NodeMeta = NativeNodeMeta | CompoundNodeMeta;
 
 export type NodeMetaRef = {
   id: string;
-  version: string;
+  version?: string;
 };
 
 export type NodeEntryConfig = {
@@ -238,15 +247,89 @@ export type NodeEntryData = {
   config: NodeEntryConfig;
 }
 
-export type NodeData = {
-  meta: NodeMetaRef;
-  title?: string;
-  collapsed: boolean;
-  nativeMode: NodeNativeMode;
-  renderer: string;
+export type NodeDataBase = {
+  id: string;
   inputs: NodeEntryData[];
   outputs: NodeEntryData[];
+}
+
+export type StartNodeData = NodeDataBase & {
+  type: 'start';
+}
+
+export type EndNodeData = NodeDataBase & {
+  type: 'end';
+}
+
+export type InputNodeData = NodeDataBase & {
+  type: 'input';
 };
+
+export type OutputNodeData = NodeDataBase & {
+  type: 'output';
+};
+
+export type LiteralNodeData = NodeDataBase & {
+  type: 'literal';
+};
+
+export type PreviewNodeData = NodeDataBase & {
+  type: 'preview';
+};
+
+export type IfNodeData = NodeDataBase & {
+  type: 'if';
+};
+
+export type SwitchNodeData = NodeDataBase & {
+  type: 'switch';
+};
+
+export type VariableNodeData = NodeDataBase & {
+  type: 'variable';
+};
+
+export type AssignNodeData = NodeDataBase & {
+  type: 'assign';
+};
+
+export type PlaceholderNodeData = NodeDataBase & {
+  type: 'placeholder';
+};
+
+export type TemplateData = {
+  nodes: (GeneralNodeData | TemplateNodeData)[];
+  edges: EdgeData[];
+};
+
+export type SubFlowData = {
+  nodes: (GeneralNodeData | SubFlowNodeData)[];
+  edges: EdgeData[];
+};
+
+export type BaseNodeData = NodeDataBase & {
+  type: 'base';
+  meta: NodeMetaRef;
+  collapsed: boolean;
+  template?: TemplateData,
+  flow?: SubFlowData,
+};
+
+export type GeneralNodeData = StartNodeData
+  | EndNodeData
+  | LiteralNodeData
+  | PreviewNodeData
+  | IfNodeData
+  | SwitchNodeData
+  | VariableNodeData
+  | AssignNodeData
+  | BaseNodeData;
+
+export type SubFlowNodeData = InputNodeData | OutputNodeData;
+
+export type TemplateNodeData = PlaceholderNodeData;
+
+export type NodeData = GeneralNodeData | SubFlowNodeData | TemplateNodeData;
 
 export type EdgeData = {
   id: string;

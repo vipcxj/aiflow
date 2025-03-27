@@ -12,6 +12,7 @@ import type {
   NormalizedDictType,
   NormalizedNumberType,
   StringConstraint,
+  NodeData,
 } from "./data-type";
 import type { AFNode } from "./flow-type";
 import {
@@ -26,7 +27,7 @@ import {
   isArrayNodeEntryType,
   isDictNodeEntryType,
   isNodeEntryTypeSupportInput
-} from "./guard";
+} from "./data-guard";
 import NDArray from "./ndarray";
 import TorchTensor from "./torch-tensor";
 import PythonObject from "./python-object";
@@ -296,6 +297,10 @@ export function getTypeFromData(data: any): NormalizedNodeEntryType {
       name: 'any',
     };
   }
+}
+
+export function isNodeDataReady(data: NodeData): boolean {
+  return data.runtime !== undefined;
 }
 
 export type NodeEntryDataWithMeta = {

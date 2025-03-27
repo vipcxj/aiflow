@@ -1,4 +1,5 @@
 import { NodeMeta, NodeMetaRef } from "./data-type";
+import { isAppWorkspace } from "./flow-guard";
 import { AFNode, FlowState, WorkspaceState } from "./flow-type";
 import { getGlobalNodeMetas } from "./nodes";
 import { getTypeFromData } from "./utils";
@@ -21,7 +22,11 @@ function parsePathName(name: string): { id: string, version: string } {
 
 export function currentFlow(state: WorkspaceState): FlowState {
   if (state.path.length === 0) {
-    return state.main;
+    if (isAppWorkspace(state)) {
+      return state.main;
+    } else {
+      throw new Error('Lib workspace must have a path.');
+    }
   }
   const name = state.path[state.path.length - 1];
   const { id, version } = parsePathName(name);

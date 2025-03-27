@@ -1,7 +1,7 @@
 import { combineNodeEntryUnionType } from "./combine";
 import { compareNodeEntryType } from "./compare";
 import type { StringType, ArrayType, NormalizedArrayType, DictType, NormalizedDictType, NormalizedNodeEntryType, UnionType, NormalizedAnyType, NormalizedNeverType, NormalizedSimpleType, NodeEntryType, NormalizedUnionType, NormalizedDictTypeKeys, NumberType, NormalizedNumberType, NormalizedStringType, BoolType, NormalizedBoolType, NormalizedNDArrayType, NDArrayType, TorchTensorType, NormalizedTorchTensorType, PythonObjectType, NormalizedPythonObjectType } from "./data-type";
-import { isSimpleArrayShape, isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isStringNodeEntryType, isNumberNodeEntryType, isBoolNodeEntryType, isArrayNodeEntryType, isDictNodeEntryType, isNDArrayNodeEntryType, isTorchTensorNodeEntryType, isPythonObjectNodeEntryType, isUnionNodeEntryType, isComplexArrayShape } from "./guard";
+import { isSimpleArrayShape, isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isStringNodeEntryType, isNumberNodeEntryType, isBoolNodeEntryType, isArrayNodeEntryType, isDictNodeEntryType, isNDArrayNodeEntryType, isTorchTensorNodeEntryType, isPythonObjectNodeEntryType, isUnionNodeEntryType, isComplexArrayShape } from "./data-guard";
 
 export function normalizeNodeEntryNumberType(type: NumberType): NormalizedNumberType {
   return type;

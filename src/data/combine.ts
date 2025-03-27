@@ -1,6 +1,6 @@
 import { compareNodeEntryType } from "./compare";
 import type { NumberType, StringType, NormalizedArrayType, NormalizedDictType, NormalizedNodeEntryType, NormalizedNDArrayType, NormalizedTorchTensorType, PythonObjectType, NormalizedSimpleType, NormalizedUnionType, NormalizedNeverType, NormalizedStringType, NormalizedNumberType, NormalizedPythonObjectType, SimpleType, NormalizedBoolType, NormalizedDictTypeKeys } from "./data-type";
-import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType } from "./guard";
+import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType } from "./data-guard";
 import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum, isRangeInclude } from "./utils";
 
 export function combineNodeEntryNumberType(a: NumberType, b: NumberType): NumberType | undefined {

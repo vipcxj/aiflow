@@ -3,21 +3,37 @@ import type {
   ArrayComplexShape,
   ArraySimpleShape,
   ArrayType, 
+  AssignNodeData, 
+  BaseNodeData, 
   BoolType, 
+  Code, 
+  CodeRef, 
+  CompoundNodeMeta, 
   DictType, 
+  EndNodeData, 
+  IfNodeData, 
+  InputNodeData, 
+  NativeNodeMeta, 
   NDArrayType, 
   NeverType, 
+  NodeData, 
   NodeEntryType, 
+  NodeMeta, 
   NormalizedNodeEntryComplexTypeSupportInput, 
   NormalizedNodeEntrySimpleTypeSupportInput, 
   NormalizedNodeEntryType, 
   NormalizedNodeEntryTypeSupportInput, 
   NormalizedUnionType, 
   NumberType, 
+  OutputNodeData, 
+  PlaceholderNodeData, 
   PythonObjectType, 
+  StartNodeData, 
   StringType, 
+  SwitchNodeData, 
   TorchTensorType, 
-  UnionType 
+  UnionType, 
+  VariableNodeData
 } from "./data-type";
 
 export function isAnyNodeEntryType(type: NodeEntryType): type is AnyType {
@@ -89,4 +105,60 @@ export function isSimpleArrayShape(shape: ArrayType['shape']): shape is ArraySim
 
 export function isComplexArrayShape(shape: ArrayType['shape']): shape is ArrayComplexShape {
   return Array.isArray(shape) && shape.length > 0 && !isSimpleArrayShape(shape);
+}
+
+export function isNativeNode(meta: NodeMeta): meta is NativeNodeMeta {
+  return meta.type === 'native';
+}
+
+export function isCompoundNode(meta: NodeMeta): meta is CompoundNodeMeta {
+  return meta.type === 'compound';
+}
+
+export function isStartNodeData(data: NodeData): data is StartNodeData {
+  return data.type === 'start';
+}
+
+export function isEndNodeData(data: NodeData): data is EndNodeData {
+  return data.type === 'end';
+}
+
+export function isIfNodeData(data: NodeData): data is IfNodeData {
+  return data.type === 'if';
+}
+
+export function isSwitchNodeData(data: NodeData): data is SwitchNodeData {
+  return data.type === 'switch';
+}
+
+export function isVariableNodeData(data: NodeData): data is VariableNodeData {
+  return data.type === 'variable';
+}
+
+export function isAssignNodeData(data: NodeData): data is AssignNodeData {
+  return data.type === 'assign';
+}
+
+export function isBaseNodeData(data: NodeData): data is BaseNodeData {
+  return data.type === 'base';
+}
+
+export function isInputsNodeData(data: NodeData): data is InputNodeData {
+  return data.type === 'input';
+}
+
+export function isOutputsNodeData(data: NodeData): data is OutputNodeData {
+  return data.type === 'output';
+}
+
+export function isPlaceholderNodeData(data: NodeData): data is PlaceholderNodeData {
+  return data.type === 'placeholder';
+}
+
+export function isCode(value: Code | CodeRef): value is Code {
+  return 'code' in value;
+}
+
+export function isCodeRef(value: Code | CodeRef): value is CodeRef {
+  return 'ref' in value;
 }

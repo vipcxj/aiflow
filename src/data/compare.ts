@@ -1,5 +1,5 @@
 import type { NormalizedAnyType, NormalizedNumberType, NormalizedStringType, NormalizedBoolType, NormalizedArrayType, NormalizedArrayComplexType, NormalizedDictType, NormalizedNDArrayType, NormalizedTorchTensorType, NormalizedPythonObjectType, NormalizedUnionType, NormalizedNodeEntryType } from "./data-type";
-import { isSimpleArrayShape, isNormalizedUnionNodeEntryType } from "./guard";
+import { isSimpleArrayShape, isNormalizedUnionNodeEntryType } from "./data-guard";
 import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum } from "./utils";
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

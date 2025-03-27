@@ -1,5 +1,5 @@
 import { NeverType, NormalizedArrayType, NormalizedBoolType, NormalizedDictType, NormalizedDictTypeKeys, NormalizedNDArrayType, NormalizedNodeEntryType, NormalizedNumberType, NormalizedPythonObjectType, NormalizedSimpleType, NormalizedStringType, NormalizedTorchTensorType, StringConstraint } from "./data-type";
-import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isSimpleArrayShape } from "./guard";
+import { isAnyNodeEntryType, isNeverNodeEntryType, isNormalizedUnionNodeEntryType, isSimpleArrayShape } from "./data-guard";
 import { calcNodeEntryNumberTypeEnum, calcNodeEntryStringTypeEnum, isArrayShallowEquals, isValidNumberInNumberType, isValidStringByConstraint, isRangeInclude, isRangeIntersect, calcRangeIntersection } from "./utils";
 import { normalizeNodeEntryArrayType, normalizeNodeEntryNumberType, normalizeNodeEntryStringType, normalizeNodeEntryUnionType } from "./normalize";
 import { combineNodeEntryType } from "./combine";

@@ -20,7 +20,7 @@ import { useEffect } from 'react';
 import { 
   isNormalizedUnionNodeEntryType, 
   isNodeEntrySimpleTypeSupportInput 
-} from '@/data/guard';
+} from '@/data/data-guard';
 import { getNodeData } from '@/data/flow-api';
 
 export type EmbeddedNodeImpl = {

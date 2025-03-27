@@ -21,7 +21,7 @@ import {
   isBoolNodeEntryType, 
   isNumberNodeEntryType, 
   isNodeEntryTypeSupportInput 
-} from "@/data/guard";
+} from "@/data/data-guard";
 
 export const ErrorNode = (props: NodeProps<AFNode> & { error: string }) => {
   return (
