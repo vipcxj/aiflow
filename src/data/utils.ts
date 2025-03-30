@@ -13,6 +13,7 @@ import type {
   NormalizedNumberType,
   StringConstraint,
   NodeData,
+  RuntimeState,
 } from "./data-type";
 import type { AFNode } from "./flow-type";
 import {
@@ -297,10 +298,6 @@ export function getTypeFromData(data: any): NormalizedNodeEntryType {
       name: 'any',
     };
   }
-}
-
-export function isNodeDataReady(data: NodeData): boolean {
-  return data.runtime !== undefined;
 }
 
 export type NodeEntryDataWithMeta = {

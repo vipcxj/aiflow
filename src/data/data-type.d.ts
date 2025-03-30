@@ -1,5 +1,6 @@
 import type { RecommandLevel } from './enum';
 import type { SubFlowState, TemplateRef } from './flow-type';
+import type { ValError } from './validate';
 
 export type NodeRuntime = 'frontend' | 'backend' | 'prefer-frontend' | 'prefer-backend' | 'not-care';
 export type NodeType = 'base';
@@ -179,24 +180,6 @@ export type NormalizedNodeEntryTypeSupportInput =
   NormalizedNodeEntrySimpleTypeSupportInput
   | NormalizedNodeEntryComplexTypeSupportInput;
 
-export type NodeEntry = {
-  name: string;
-  type: NormalizedNodeEntryType;
-  disableHandle?: boolean;
-  recommandLevel: RecommandLevel;
-  description: string;
-  verificationCode?: {
-    js?: string;
-    py?: string;
-  };
-};
-
-type NodeMetaBase = {
-  id: string;
-  version?: string;
-  title: string;
-};
-
 export type Code = {
   code: string;
 }
@@ -205,13 +188,29 @@ export type CodeRef = {
   ref: string;
 }
 
+export type NodeEntry = {
+  name: string;
+  type: NormalizedNodeEntryType;
+  optional?: boolean;
+  disableHandle?: boolean;
+  recommandLevel: RecommandLevel;
+  description: string;
+  checkCode?: Code | CodeRef;
+};
+
+type NodeMetaBase = {
+  id: string;
+  version?: string;
+  title: string;
+};
+
 export type NativeNodeMeta = NodeMetaBase & {
   type: 'native';
   impls: {
     [language: string]: Code | CodeRef;
   }
-  checks?: Code | CodeRef;
-  types?: Code | CodeRef;
+  checkCode?: Code | CodeRef;
+  typeCode?: Code | CodeRef;
   inputs: NodeEntry[];
   outputs: NodeEntry[];
 };
@@ -235,11 +234,21 @@ export type NodeEntryConfig = {
   modeIndex: number;
 }
 
+export type InputsState = 'init' | 'data-ready' | 'type-ready' | 'error' | 'need-backend';
+export type RuntimeState = 'init' | 'data-ready' | 'type-ready' | 'error' | 'need-backend';
+
 export type NodeEntryRuntime = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data: any;
-  ready: boolean;
+  state: RuntimeState;
   type?: NormalizedNodeEntryType;
+  error?: {
+    reason: 'exception';
+    error: unknown;
+  } | {
+    reason: 'validate-failed';
+    error: ValError
+  };
 };
 
 export type NodeEntryData = {
@@ -251,6 +260,7 @@ export type NodeDataBase = {
   id: string;
   inputs: NodeEntryData[];
   outputs: NodeEntryData[];
+  inputsState: InputsState;
 }
 
 export type StartNodeData = NodeDataBase & {

@@ -1,12 +1,14 @@
-import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
-import type { BaseNodeData, NativeNodeMeta, NodeData, NodeMeta, NodeMetaRef, SubFlowData, TemplateData } from "./data-type";
+import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
+import type { BaseNodeData, NativeNodeMeta, NodeData, NodeMeta, NodeMetaRef, NormalizedNodeEntryType, SubFlowData, TemplateData } from "./data-type";
 import type { AFNodeData, FlowState, SubFlowState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
-import { getTypeFromData, isNodeDataReady } from "./utils";
+import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
-import { validateNodeEntryData } from "./validate";
+import { ValError, validateNodeEntryData } from "./validate";
 import apis from './apis';
+import typeApis from './type-apis';
 import { getGlobalNodeMetas } from "./nodes";
 import { getGlobalTemplates } from "./templates";
+import { mustNodeEntryTypeAssignTo } from "./assignable";
 
 export type RuntimeContext = {
   getFlowMeta: () => FlowState;
@@ -15,6 +17,14 @@ export type RuntimeContext = {
   getTemplate: (ref: TemplateRef) => TemplateFlowState | undefined;
   getVariable: (name: string) => Variable | undefined;
 };
+
+export class NotImplemented extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NotImplemented';
+    Object.setPrototypeOf(this, NotImplemented.prototype);
+  }
+}
 
 export function createRuntimeContext(ws: WorkspaceState, flow: FlowState, flowData?: SubFlowData): RuntimeContext {
   const globalNodeMetas = getGlobalNodeMetas();
@@ -42,16 +52,38 @@ export function createRuntimeContext(ws: WorkspaceState, flow: FlowState, flowDa
   };
 }
 
+export type TypeRuntime = {
+  args: Record<string, NormalizedNodeEntryType>;
+}
+
+export type TypeFunc = (context: TypeRuntime) => Record<string, NormalizedNodeEntryType>;
+
+export function createTypeRuntime(meta: NativeNodeMeta): TypeRuntime {
+  return {
+    args: meta.inputs.reduce<Record<string, NormalizedNodeEntryType>>((acc, input) => {
+      acc[input.name] = input.type;
+      return acc;
+    }, {}),
+  };
+}
+
 export type ExecResult = {
   success: false;
   reason: 'not-implemented' | 'not-ready';
 } | {
   success: false;
+  reason: 'validate-failed';
+  error: ValError;
+} | {
+  success: false;
   reason: 'exception';
   error: unknown;
 } | {
-  success: true;
+  success: 'data-ready';
   infuences: Record<string, unknown>;
+} | {
+  success: 'type-ready';
+  infuences: Record<string, NormalizedNodeEntryType>;
 };
 
 export type ExecRuntime = {
@@ -74,27 +106,103 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NativeNodeMet
   for (let i = 0; i < meta.outputs.length; i++) {
     const outputMeta = meta.outputs[i];
     if (!(outputMeta.name in result)) {
-      return { success: false, reason: 'exception', error: `Output "${outputMeta.name}" is missing.` };
+      if (outputMeta.optional) {
+        continue;
+      } else {
+        return { success: false, reason: 'exception', error: `Output "${outputMeta.name}" is missing.` };
+      }
     }
     const value = result[outputMeta.name];
     try {
       validateNodeEntryData(value, outputMeta);
     } catch (error) {
-      return { success: false, reason: 'exception', error };
+      if (error instanceof ValError) {
+        return { success: false, reason: 'validate-failed', error };
+      } else {
+        return { success: false, reason: 'exception', error };
+      }
     }
     const outputData = data.outputs[i];
     if (outputData.runtime.data !== value) {
       outputData.runtime.data = value;
-      outputData.runtime.ready = true;
+      outputData.runtime.state = 'data-ready';
       outputData.runtime.type = getTypeFromData(value);
       infuences[outputMeta.name] = value;
     }
   }
-  return { success: true, infuences };
+  return { success: 'data-ready', infuences };
+}
+
+function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, meta: NativeNodeMeta, data: BaseNodeData): ExecResult {
+  if (typeof result !== 'object') {
+    return { success: false, reason: 'exception', error: 'Result is not an object.' };
+  }
+  const infuences: Record<string, NormalizedNodeEntryType> = {};
+  for (let i = 0; i < meta.outputs.length; i++) {
+    const outputMeta = meta.outputs[i];
+    if (!(outputMeta.name in result)) {
+      if (outputMeta.optional) {
+        continue;
+      } else {
+        return { success: false, reason: 'exception', error: `Output "${outputMeta.name}" is missing.` };
+      }
+    }
+    const value = result[outputMeta.name];
+    if (!mustNodeEntryTypeAssignTo(outputMeta.type, value)) {
+      return { success: false, reason: 'validate-failed', error: new ValError('Type mismatch', [outputMeta]) };
+    }
+    const outputData = data.outputs[i];
+    if (outputData.runtime.type !== value) {
+      outputData.runtime.type = value;
+      outputData.runtime.state = 'type-ready';
+      infuences[outputMeta.name] = value;
+    }
+  }
+  return { success: 'type-ready', infuences };
+}
+
+function execDependencies(runtimeContext: RuntimeContext, data: NodeData, force: boolean = false): void {
+  if (data.inputsState === 'init' || force) {
+    const flowMeta = runtimeContext.getFlowMeta();
+    const flowData = runtimeContext.getFlowData();
+    const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
+    for (const entry of Object.keys(dependencies)) {
+      const dependency = dependencies[entry];
+      const entryData = getNodeEntryData(dependency.data, dependency.entry, 'output');
+      if (!entryData) {
+        throw new Error('Entry data not found.');
+      }
+      const dependentEntryData = getNodeEntryData(data, entry, 'input');
+      if (!dependentEntryData) {
+        throw new Error('Dependent entry data not found.');
+      }
+      if (entryData.runtime.state === 'data-ready') {
+        dependentEntryData.runtime.data = entryData.runtime.data;
+        dependentEntryData.runtime.state = 'data-ready';
+        dependentEntryData.runtime.type = entryData.runtime.type;
+      } else if (entryData.runtime.state === 'type-ready') {
+        dependentEntryData.runtime.type = entryData.runtime.type;
+        dependentEntryData.runtime.state = 'type-ready';
+      } else if (entryData.runtime.state === 'init') {
+        const result = execNode(runtimeContext, dependency.data, true);
+        if (result.success && entryData.config.name in result.infuences) {
+          dependentEntryData.runtime.state = result.success;
+          if (result.success === 'data-ready') {
+            dependentEntryData.runtime.data = result.infuences[entryData.config.name];
+            dependentEntryData.runtime.type = getTypeFromData(result.infuences[entryData.config.name]);
+          } else {
+            dependentEntryData.runtime.type = result.infuences[entryData.config.name];
+          }
+        } else {
+          return { success: false, reason: 'not-ready' };
+        }
+      }
+    }
+  }
 }
 
 export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDependencies: boolean = true, language: string = 'js'): ExecResult {
-  if (!isNodeDataReady(data)) {
+  if (nodeState === 'init') {
     if (execDependencies) {
       const flowMeta = runtimeContext.getFlowMeta();
       const flowData = runtimeContext.getFlowData();
@@ -109,22 +217,29 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
         if (!dependentEntryData) {
           throw new Error('Dependent entry data not found.');
         }
-        if (entryData.runtime.ready) {
+        if (entryData.runtime.state === 'data-ready') {
           dependentEntryData.runtime.data = entryData.runtime.data;
-          dependentEntryData.runtime.ready = true;
+          dependentEntryData.runtime.state = 'data-ready';
           dependentEntryData.runtime.type = entryData.runtime.type;
-        } else {
+        } else if (entryData.runtime.state === 'type-ready') {
+          dependentEntryData.runtime.type = entryData.runtime.type;
+          dependentEntryData.runtime.state = 'type-ready';
+        } else if (entryData.runtime.state === 'init') {
           const result = execNode(runtimeContext, dependency.data, true, language);
           if (result.success && entryData.config.name in result.infuences) {
-            dependentEntryData.runtime.data = result.infuences[entryData.config.name];
-            dependentEntryData.runtime.ready = true;
-            dependentEntryData.runtime.type = getTypeFromData(result.infuences[entryData.config.name]);
+            dependentEntryData.runtime.state = result.success;
+            if (result.success === 'data-ready') {
+              dependentEntryData.runtime.data = result.infuences[entryData.config.name];
+              dependentEntryData.runtime.type = getTypeFromData(result.infuences[entryData.config.name]);
+            } else {
+              dependentEntryData.runtime.type = result.infuences[entryData.config.name];
+            }
           } else {
             return { success: false, reason: 'not-ready' };
           }
         }
       }
-      if (!isNodeDataReady(data)) {
+      if (!getNodeDataState(data)) {
         return { success: false, reason: 'not-ready' };
       }
     } else {
@@ -138,31 +253,65 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
     }
     if (isNativeNode(meta)) {
       const jsImpl = meta.impls[language];
-      if (!jsImpl) {
-        return { success: false, reason: 'not-implemented' };
-      }
-      const context: ExecRuntime = {
-        meta,
-        args: data.inputs.reduce<Record<string, unknown>>((acc, input) => {
-          acc[input.config.name] = input.runtime.data;
-          return acc;
-        }, {}),
-      };
-      if (isCode(jsImpl)) {
-        try {
-          const result = evaluate(jsImpl.code, context) as Record<string, unknown>;
-          return dealWithExecResult(result, meta, data);
-        } catch (error) {
-          return { success: false, reason: 'exception', error };
+      if (jsImpl) {
+        const context: ExecRuntime = {
+          meta,
+          args: data.inputs.reduce<Record<string, unknown>>((acc, input) => {
+            acc[input.config.name] = input.runtime.data;
+            return acc;
+          }, {}),
+        };
+        if (isCode(jsImpl)) {
+          try {
+            const result = evaluate(jsImpl.code, context) as Record<string, unknown>;
+            return dealWithExecResult(result, meta, data);
+          } catch (error) {
+            if (!(error instanceof NotImplemented)) {
+              return { success: false, reason: 'exception', error };
+            }
+          }
+        } else {
+          if (!(jsImpl.ref in apis)) {
+            throw new Error(`API ${jsImpl.ref} not found.`);
+          }
+          const api = (apis as Record<string, ExecFunc>)[jsImpl.ref];
+          try {
+            const result = api(context);
+            return dealWithExecResult(result, meta, data);
+          } catch (error) {
+            if (!(error instanceof NotImplemented)) {
+              return { success: false, reason: 'exception', error };
+            }
+          }
         }
-      } else {
-        if (!(jsImpl.ref in apis)) {
-          return { success: false, reason: 'not-implemented' };
-        }
-        const api = (apis as Record<string, ExecFunc>)[jsImpl.ref];
-        const result = api(context);
-        return dealWithExecResult(result, meta, data);
       }
+      if (meta.typeCode) {
+        const context = createTypeRuntime(meta);
+        if (isCode(meta.typeCode)) {
+          try {
+            const result = evaluate(meta.typeCode.code, context) as Record<string, NormalizedNodeEntryType>;
+            return dealWithTypeResult(result, meta, data);
+          } catch (error) {
+            if (!(error instanceof NotImplemented)) {
+              return { success: false, reason: 'exception', error };
+            }
+          }
+        } else {
+          if (!(meta.typeCode.ref in typeApis)) {
+            throw new Error(`API ${meta.typeCode.ref} not found.`);
+          }
+          const api = (typeApis as Record<string, TypeFunc>)[meta.typeCode.ref];
+          try {
+            const result = api(context);
+            return dealWithTypeResult(result, meta, data);
+          } catch (error) {
+            if (!(error instanceof NotImplemented)) {
+              return { success: false, reason: 'exception', error };
+            }
+          }
+        }
+      }
+      return { success: false, reason: 'not-implemented' };
     } else {
       let templateMeta: TemplateFlowState | undefined;
       if (meta.template) {
@@ -173,6 +322,8 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
       }
       return execSubFlow(runtimeContext, meta.flow, data.flow, templateMeta, data.template);
     }
+  } else if (isLiteralNodeData(data)) {
+    
   } else if (isIfNodeData(data)) {
     const cond = getNodeEntryData(data, 'condition', 'input');
     const ifTrue = getNodeEntryData(data, 'ifTrue', 'input');
@@ -190,13 +341,13 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
     } else {
       result = ifFalse.runtime.data;
     }
-    if (output.runtime.data !== result) {
+    if (output.runtime.state !== 'data-ready' || output.runtime.data !== result) {
       output.runtime.data = result;
-      output.runtime.ready = true;
+      output.runtime.state = 'data-ready';
       output.runtime.type = getTypeFromData(result);
-      return { success: true, infuences: { output: result } };
+      return { success: 'data-ready', infuences: { output: result } };
     } else {
-      return { success: true, infuences: {} };
+      return { success: 'data-ready', infuences: {} };
     }
   } else if (isSwitchNodeData(data)) {
     const selector = getNodeEntryData(data, 'selector', 'input');
@@ -218,25 +369,25 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
     for (const entry of data.inputs) {
       if (entry.config.name.startsWith("case:")) {
         const caseValue = isNumber ? Number(entry.config.name.slice(5)) : entry.config.name.slice(5);
-        if (selector?.runtime.data === caseValue) {
-          if (output.runtime.data !== entry.runtime.data) {
+        if (selector.runtime.data === caseValue) {
+          if (output.runtime.state !== 'data-ready' || output.runtime.data !== entry.runtime.data) {
             output.runtime.data = entry.runtime.data;
-            output.runtime.ready = true;
+            output.runtime.state = 'data-ready';
             output.runtime.type = getTypeFromData(entry.runtime.data);
-            return { success: true, infuences: { output: entry.runtime.data } };
+            return { success: 'data-ready', infuences: { output: entry.runtime.data } };
           } else {
-            return { success: true, infuences: {} };
+            return { success: 'data-ready', infuences: {} };
           }
         }
       }
     }
-    if (output.runtime.data !== defaultCase.runtime.data) {
+    if (output.runtime.state !== 'data-ready' || output.runtime.data !== defaultCase.runtime.data) {
       output.runtime.data = defaultCase.runtime.data;
-      output.runtime.ready = true;
+      output.runtime.state = 'data-ready';
       output.runtime.type = getTypeFromData(defaultCase.runtime.data);
-      return { success: true, infuences: { output: defaultCase.runtime.data } };
+      return { success: 'data-ready', infuences: { output: defaultCase.runtime.data } };
     } else {
-      return { success: true, infuences: {} };
+      return { success: 'data-ready', infuences: {} };
     }
   } else if (isVariableNodeData(data)) {
     const varName = getNodeEntryData(data, 'variable name', 'input');
@@ -254,13 +405,13 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
     if (!output) {
       throw new Error('Entry output not found.');
     }
-    if (output.runtime.data !== variable.runtime.data) {
+    if (output.runtime.state !== 'data-ready' || output.runtime.data !== variable.runtime.data) {
       output.runtime.data = variable.runtime.data;
-      output.runtime.ready = true;
+      output.runtime.state = 'data-ready';
       output.runtime.type = variable.runtime.type;
-      return { success: true, infuences: { output: variable.runtime.data } };
+      return { success: 'data-ready', infuences: { output: variable.runtime.data } };
     } else {
-      return { success: true, infuences: {} };
+      return { success: 'data-ready', infuences: {} };
     }
   } else if (isAssignNodeData(data)) {
     const varName = getNodeEntryData(data, 'variable name', 'input');
@@ -282,16 +433,16 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
     if (!output) {
       throw new Error('Entry output not found.');
     }
-    if (variable.runtime.data !== value.runtime.data || output.runtime.data !== value.runtime.data) {
+    if (variable.runtime.data !== value.runtime.data || output.runtime.state !== 'data-ready' || output.runtime.data !== value.runtime.data) {
       variable.runtime.data = value.runtime.data;
       variable.runtime.ready = true;
       variable.runtime.type = getTypeFromData(value.runtime.data);
       output.runtime.data = value.runtime.data;
-      output.runtime.ready = true;
+      output.runtime.state = 'data-ready';
       output.runtime.type = getTypeFromData(value.runtime.data);
-      return { success: true, infuences: { output: value.runtime.data } };
+      return { success: 'data-ready', infuences: { output: value.runtime.data } };
     } else {
-      return { success: true, infuences: {} };
+      return { success: 'data-ready', infuences: {} };
     }
   } else {
     return { success: false, reason: 'not-implemented' };

@@ -13,6 +13,7 @@ import type {
   EndNodeData, 
   IfNodeData, 
   InputNodeData, 
+  LiteralNodeData, 
   NativeNodeMeta, 
   NDArrayType, 
   NeverType, 
@@ -27,6 +28,7 @@ import type {
   NumberType, 
   OutputNodeData, 
   PlaceholderNodeData, 
+  PreviewNodeData, 
   PythonObjectType, 
   StartNodeData, 
   StringType, 
@@ -121,6 +123,14 @@ export function isStartNodeData(data: NodeData): data is StartNodeData {
 
 export function isEndNodeData(data: NodeData): data is EndNodeData {
   return data.type === 'end';
+}
+
+export function isLiteralNodeData(data: NodeData): data is LiteralNodeData {
+  return data.type === 'literal';
+}
+
+export function isPreviewNodeData(data: NodeData): data is PreviewNodeData {
+  return data.type === 'preview';
 }
 
 export function isIfNodeData(data: NodeData): data is IfNodeData {
