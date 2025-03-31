@@ -202,6 +202,12 @@ type NodeMetaBase = {
   id: string;
   version?: string;
   title: string;
+  inputs: NodeEntry[];
+  outputs: NodeEntry[];
+};
+
+export type BaseNodeMeta = NodeMetaBase & {
+  type: 'base';
 };
 
 export type NativeNodeMeta = NodeMetaBase & {
@@ -211,8 +217,6 @@ export type NativeNodeMeta = NodeMetaBase & {
   }
   checkCode?: Code | CodeRef;
   typeCode?: Code | CodeRef;
-  inputs: NodeEntry[];
-  outputs: NodeEntry[];
 };
 
 export type CompoundNodeMeta = NodeMetaBase & {
@@ -234,8 +238,8 @@ export type NodeEntryConfig = {
   modeIndex: number;
 }
 
-export type InputsState = 'init' | 'data-ready' | 'type-ready' | 'error' | 'need-backend';
-export type RuntimeState = 'init' | 'data-ready' | 'type-ready' | 'error' | 'need-backend';
+export type InputsState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error';
+export type RuntimeState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error';
 
 export type NodeEntryRuntime = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -258,6 +262,8 @@ export type NodeEntryData = {
 
 export type NodeDataBase = {
   id: string;
+  type: string;
+  meta: NodeMetaRef;
   inputs: NodeEntryData[];
   outputs: NodeEntryData[];
   inputsState: InputsState;
@@ -319,7 +325,6 @@ export type SubFlowData = {
 
 export type BaseNodeData = NodeDataBase & {
   type: 'base';
-  meta: NodeMetaRef;
   collapsed: boolean;
   template?: TemplateData,
   flow?: SubFlowData,

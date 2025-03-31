@@ -1,5 +1,5 @@
 import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
-import type { BaseNodeData, NativeNodeMeta, NodeData, NodeMeta, NodeMetaRef, NormalizedNodeEntryType, SubFlowData, TemplateData } from "./data-type";
+import type { BaseNodeData, NativeNodeMeta, NodeData, NodeEntryData, NodeMeta, NodeMetaRef, NormalizedNodeEntryType, SubFlowData, TemplateData } from "./data-type";
 import type { AFNodeData, FlowState, SubFlowState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
 import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
@@ -69,7 +69,10 @@ export function createTypeRuntime(meta: NativeNodeMeta): TypeRuntime {
 
 export type ExecResult = {
   success: false;
-  reason: 'not-implemented' | 'not-ready';
+  reason: 'unavailable';
+} | {
+  success: false;
+  reason: 'not-ready';
 } | {
   success: false;
   reason: 'validate-failed';
@@ -161,96 +164,128 @@ function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, met
   return { success: 'type-ready', infuences };
 }
 
-function execDependencies(runtimeContext: RuntimeContext, data: NodeData, force: boolean = false): void {
-  if (data.inputsState === 'init' || force) {
-    const flowMeta = runtimeContext.getFlowMeta();
-    const flowData = runtimeContext.getFlowData();
-    const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
-    for (const entry of Object.keys(dependencies)) {
-      const dependency = dependencies[entry];
-      const entryData = getNodeEntryData(dependency.data, dependency.entry, 'output');
-      if (!entryData) {
-        throw new Error('Entry data not found.');
-      }
-      const dependentEntryData = getNodeEntryData(data, entry, 'input');
-      if (!dependentEntryData) {
-        throw new Error('Dependent entry data not found.');
-      }
-      if (entryData.runtime.state === 'data-ready') {
-        dependentEntryData.runtime.data = entryData.runtime.data;
-        dependentEntryData.runtime.state = 'data-ready';
-        dependentEntryData.runtime.type = entryData.runtime.type;
-      } else if (entryData.runtime.state === 'type-ready') {
-        dependentEntryData.runtime.type = entryData.runtime.type;
-        dependentEntryData.runtime.state = 'type-ready';
-      } else if (entryData.runtime.state === 'init') {
-        const result = execNode(runtimeContext, dependency.data, true);
-        if (result.success && entryData.config.name in result.infuences) {
-          dependentEntryData.runtime.state = result.success;
-          if (result.success === 'data-ready') {
-            dependentEntryData.runtime.data = result.infuences[entryData.config.name];
-            dependentEntryData.runtime.type = getTypeFromData(result.infuences[entryData.config.name]);
-          } else {
-            dependentEntryData.runtime.type = result.infuences[entryData.config.name];
-          }
+function setEntryDataRuntimeData(entryData: NodeEntryData, data: unknown): void {
+  entryData.runtime.data = data;
+  entryData.runtime.state = 'data-ready';
+  entryData.runtime.type = getTypeFromData(data);
+  entryData.runtime.error = undefined;
+}
+
+function setEntryDataRuntimeType(entryData: NodeEntryData, type: NormalizedNodeEntryType): void {
+  entryData.runtime.data = undefined;
+  entryData.runtime.state = 'type-ready';
+  entryData.runtime.type = type;
+  entryData.runtime.error = undefined;
+}
+
+function setEntryDataRuntimeError(entryData: NodeEntryData, error: unknown): void {
+  entryData.runtime.data = undefined;
+  entryData.runtime.state = 'error';
+  entryData.runtime.type = undefined;
+  if (error instanceof ValError) {
+    entryData.runtime.error = {
+      reason: 'validate-failed',
+      error,
+    };
+  } else {
+    entryData.runtime.error = {
+      reason: 'exception',
+      error,
+    };
+  }
+}
+
+function setEntryDataRuntimeInitOrUnavailable(entryData: NodeEntryData, init: boolean): void {
+  entryData.runtime.data = undefined;
+  entryData.runtime.state = init ? 'init' : 'unavailable';
+  entryData.runtime.type = undefined;
+  entryData.runtime.error = undefined;
+}
+
+function calcNodeInputsState(nodeData: NodeData, nodeMeta: NodeMeta): 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error' {
+  let targetNum = 0;
+  let dataReadyNum = 0;
+  let typeReadyNum = 0;
+  for (let i = 0; i < nodeMeta.inputs.length; i++) {
+    const entryMeta = nodeMeta.inputs[i];
+    const entryData = nodeData.inputs[i];
+    if (entryMeta.optional) {
+      continue;
+    }
+    targetNum++;
+    if (entryData.runtime.state === 'init') {
+      return 'init';
+    } else if (entryData.runtime.state === 'data-ready') {
+      dataReadyNum++;
+    } else if (entryData.runtime.state === 'type-ready') {
+      typeReadyNum++;
+    } else if (entryData.runtime.state === 'unavailable') {
+      continue;
+    } else if (entryData.runtime.state === 'error') {
+      return 'error';
+    } else {
+      throw new Error(`Invalid entry state: ${entryData.runtime.state}.`);
+    }
+  }
+  if (dataReadyNum === targetNum) {
+    return 'data-ready';
+  } else if (typeReadyNum === targetNum) {
+    return 'type-ready';
+  } else {
+    return 'unavailable';
+  }
+}
+
+function prepareDependencies(runtimeContext: RuntimeContext, data: NodeData, force: boolean = false): void {
+  const flowMeta = runtimeContext.getFlowMeta();
+  const flowData = runtimeContext.getFlowData();
+  const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
+  for (const entry of Object.keys(dependencies)) {
+    const dependency = dependencies[entry];
+    const entryData = getNodeEntryData(dependency.data, dependency.entry, 'output');
+    if (!entryData) {
+      throw new Error('Entry data not found.');
+    }
+    const dependentEntryData = getNodeEntryData(data, entry, 'input');
+    if (!dependentEntryData) {
+      throw new Error('Dependent entry data not found.');
+    }
+    if (entryData.runtime.state === 'data-ready') {
+      setEntryDataRuntimeData(dependentEntryData, entryData.runtime.data);
+    } else if (entryData.runtime.state === 'type-ready') {
+      setEntryDataRuntimeType(dependentEntryData, entryData.runtime.type!);
+    } else if (entryData.runtime.state === 'init' || force) {
+      const result = prepareNode(runtimeContext, dependency.data, true);
+      if (result.success && entryData.config.name in result.infuences) {
+        if (result.success === 'data-ready') {
+          setEntryDataRuntimeData(dependentEntryData, result.infuences[entryData.config.name]);
         } else {
-          return { success: false, reason: 'not-ready' };
+          setEntryDataRuntimeType(dependentEntryData, result.infuences[entryData.config.name]);
+        }
+      } else if (!result.success) {
+        if (result.reason === 'unavailable' || result.reason === 'not-ready') {
+          setEntryDataRuntimeInitOrUnavailable(dependentEntryData, result.reason === 'not-ready');
+        } else {
+          setEntryDataRuntimeError(dependentEntryData, result.error);
         }
       }
     }
   }
 }
 
-export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDependencies: boolean = true, language: string = 'js'): ExecResult {
-  if (nodeState === 'init') {
-    if (execDependencies) {
-      const flowMeta = runtimeContext.getFlowMeta();
-      const flowData = runtimeContext.getFlowData();
-      const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
-      for (const entry of Object.keys(dependencies)) {
-        const dependency = dependencies[entry];
-        const entryData = getNodeEntryData(dependency.data, dependency.entry, 'output');
-        if (!entryData) {
-          throw new Error('Entry data not found.');
-        }
-        const dependentEntryData = getNodeEntryData(data, entry, 'input');
-        if (!dependentEntryData) {
-          throw new Error('Dependent entry data not found.');
-        }
-        if (entryData.runtime.state === 'data-ready') {
-          dependentEntryData.runtime.data = entryData.runtime.data;
-          dependentEntryData.runtime.state = 'data-ready';
-          dependentEntryData.runtime.type = entryData.runtime.type;
-        } else if (entryData.runtime.state === 'type-ready') {
-          dependentEntryData.runtime.type = entryData.runtime.type;
-          dependentEntryData.runtime.state = 'type-ready';
-        } else if (entryData.runtime.state === 'init') {
-          const result = execNode(runtimeContext, dependency.data, true, language);
-          if (result.success && entryData.config.name in result.infuences) {
-            dependentEntryData.runtime.state = result.success;
-            if (result.success === 'data-ready') {
-              dependentEntryData.runtime.data = result.infuences[entryData.config.name];
-              dependentEntryData.runtime.type = getTypeFromData(result.infuences[entryData.config.name]);
-            } else {
-              dependentEntryData.runtime.type = result.infuences[entryData.config.name];
-            }
-          } else {
-            return { success: false, reason: 'not-ready' };
-          }
-        }
-      }
-      if (!getNodeDataState(data)) {
-        return { success: false, reason: 'not-ready' };
-      }
-    } else {
-      return { success: false, reason: 'not-ready' };
-    }
+export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useDependencies: boolean = true, language: string = 'js'): ExecResult {
+  if (useDependencies) {
+    prepareDependencies(runtimeContext, data);
+  }
+  const meta = runtimeContext.getNodeMeta(data.meta);
+  if (!meta) {
+    throw new Error('Node meta is required.');
+  }
+  const inputsState = calcNodeInputsState(data, meta);
+  if (inputsState !== 'data-ready' && inputsState !== 'type-ready') {
+    return { success: false, reason: 'not-ready' };
   }
   if (isBaseNodeData(data)) {
-    const meta = runtimeContext.getNodeMeta(data.meta);
-    if (!meta) {
-      throw new Error('Node meta is required.');
-    }
     if (isNativeNode(meta)) {
       const jsImpl = meta.impls[language];
       if (jsImpl) {
@@ -323,7 +358,7 @@ export function execNode(runtimeContext: RuntimeContext, data: NodeData, execDep
       return execSubFlow(runtimeContext, meta.flow, data.flow, templateMeta, data.template);
     }
   } else if (isLiteralNodeData(data)) {
-    
+
   } else if (isIfNodeData(data)) {
     const cond = getNodeEntryData(data, 'condition', 'input');
     const ifTrue = getNodeEntryData(data, 'ifTrue', 'input');
@@ -534,7 +569,7 @@ export function execSubFlow(runtimeContext: RuntimeContext, meta: SubFlowState, 
     do {
       nextNodes = [];
       for (const nodeData of currentNodes) {
-        const result = execNode(runtimeContext, nodeData);
+        const result = prepareNode(runtimeContext, nodeData);
         if (!result.success) {
           return result;
         }
