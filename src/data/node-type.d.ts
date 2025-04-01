@@ -28,7 +28,7 @@ export type BaseNodeMeta = NodeMetaBase & {
   typeCode?: Code | CodeRef;
 };
 
-export type CompoundNodeMeta = SubFlowState;
+export type CompoundNodeMeta = SubFlowConfigState;
 
 export type NodeMeta = BaseNodeMeta | CompoundNodeMeta;
 
@@ -37,45 +37,42 @@ export type NodeMetaRef = {
   version?: string;
 };
 
-export type NodeEntryConfig = {
+export type InputNodeEntryConfig = {
   name: string;
   mode: 'handle' | 'input';
   modeIndex: number;
 };
 
-export type RuntimeState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error';
+export type OutputNodeEntryConfig = {
+  name: string;
+};
 
 export type NodeEntryRuntime = {
   state: 'init' | 'unavailable';
   data: undefined;
   type: undefined;
-  error: undefined;
 } | {
   state: 'data-ready';
   data: unknown;
-  type: undefined;
-  error: undefined;
+  type: NormalizedNodeEntryType;
 } | {
   state: 'type-ready';
   data: undefined;
   type: NormalizedNodeEntryType;
-  error: undefined;
 } | {
-  state: 'error';
-  data: undefined;
+  state: 'validate-failed';
+  data: unknown;
   type: undefined;
-  error?: {
-    reason: 'exception';
-    error: unknown;
-  } | {
-    reason: 'validate-failed';
-    error: ValError
-  };
 };
 
-export type NodeEntryData = {
+export type InputNodeEntryData = {
   runtime: NodeEntryRuntime;
-  config: NodeEntryConfig;
+  config: InputNodeEntryConfig;
+};
+
+export type OutputNodeEntryData = {
+  runtime: NodeEntryRuntime;
+  config: OutputNodeEntryConfig;
 };
 
 export type FlowData = {
@@ -83,12 +80,78 @@ export type FlowData = {
   edges: EdgeData[];
 };
 
-export type NodeData = {
+export type FlowConfigData = {
+  nodes: NodeConfigData[];
+  edges: EdgeConfigData[];
+};
+
+export type FlowRuntimeData = {
+  nodes: NodeRuntimeData[];
+  edges: EdgeRuntimeData[];
+};
+
+export type NodeMetaExtend = {
+  inputs: NodeEntry[];
+  outputs: NodeEntry[];
+};
+
+export type ValidateError = {
+  level: 'info' | 'warning' | 'error';
+  entries: string[];
+  message: string;
+};
+
+export type ExceptionError = {
+  message: string;
+};
+
+type NodeDataError = {
+  validates: ValidateError[];
+  exception?: ExceptionError;
+}
+
+type NodeDataBase = {
   id: string;
-  meta: NodeMetaRef | NodeMeta;
+}
+
+export type NodeData = NodeDataBase & {
+  meta: NodeMetaRef;
+  metaExtend?: NodeMetaExtend;
   collapsed: boolean;
-  inputs: NodeEntryData[];
-  outputs: NodeEntryData[];
+  inputs: InputNodeEntryData[];
+  outputs: OutputNodeEntryData[];
+  inputError?: NodeDataError,
+  outputError?: NodeDataError,
   template?: FlowData,
   flow?: FlowData,
+};
+
+export type NodeConfigData = NodeDataBase & {
+  meta: NodeMetaRef;
+  metaExtend?: NodeMetaExtend;
+  collapsed: boolean;
+  inputs: InputNodeEntryConfig[];
+  outputs: OutputNodeEntryConfig[];
+  template?: FlowConfigData;
+  flow?: FlowConfigData;
 }
+
+export type NodeRuntimeData = NodeDataBase & {
+  inputs: NodeEntryRuntime[];
+  outputs: NodeEntryRuntime[];
+  inputError?: NodeDataError,
+  outputError?: NodeDataError,
+  template?: FlowRuntimeData;
+  flow?: FlowRuntimeData;
+};
+
+export type EdgeData = {
+  id: string;
+  sourceNode: string;
+  sourceEntry: string;
+  targetNode: string;
+  targetEntry: string;
+}
+
+export type EdgeConfigData = EdgeData;
+export type EdgeRuntimeData = EdgeData;

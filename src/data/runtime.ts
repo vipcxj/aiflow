@@ -1,5 +1,5 @@
 import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
-import type { BaseNodeData, NativeNodeMeta, NodeData, NodeEntryData, NodeMeta, NodeMetaRef, NormalizedNodeEntryType, SubFlowData, TemplateData } from "./data-type";
+import type { NormalizedNodeEntryType } from "./data-type";
 import type { AFNodeData, FlowState, SubFlowState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
 import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
@@ -9,10 +9,14 @@ import typeApis from './type-apis';
 import { getGlobalNodeMetas } from "./nodes";
 import { getGlobalTemplates } from "./templates";
 import { mustNodeEntryTypeAssignTo } from "./assignable";
+import type { ExceptionError, FlowData, NodeData, NodeEntryRuntime, NodeMeta, NodeMetaRef, ValidateError } from "./node-type";
+import { RecommandLevel } from "./enum";
+import { isNode } from "@xyflow/react";
+import { compareNodeEntryType } from "./compare";
 
 export type RuntimeContext = {
   getFlowMeta: () => FlowState;
-  getFlowData: () => SubFlowData | undefined;
+  getFlowData: () => FlowData | undefined;
   getNodeMeta: (ref: NodeMetaRef) => NodeMeta | undefined;
   getTemplate: (ref: TemplateRef) => TemplateFlowState | undefined;
   getVariable: (name: string) => Variable | undefined;
@@ -26,11 +30,11 @@ export class NotImplemented extends Error {
   }
 }
 
-export function createRuntimeContext(ws: WorkspaceState, flow: FlowState, flowData?: SubFlowData): RuntimeContext {
+export function createRuntimeContext(ws: WorkspaceState, flowMeta: FlowState, flowData?: FlowData): RuntimeContext {
   const globalNodeMetas = getGlobalNodeMetas();
   const globalTempaltes = getGlobalTemplates();
   return {
-    getFlowMeta: () => flow,
+    getFlowMeta: () => flowMeta,
     getFlowData: () => flowData,
     getNodeMeta: (ref: NodeMetaRef) => {
       const nodeMeta = ws.nodes.find(n => n.id === ref.id);
@@ -47,7 +51,7 @@ export function createRuntimeContext(ws: WorkspaceState, flow: FlowState, flowDa
       return globalTempaltes.find(t => t.id === ref.id && (!ref.version || t.version === ref.version));
     },
     getVariable: (name: string) => {
-      return flow.variables[name];
+      return flowMeta.variables[name];
     },
   };
 }
@@ -58,7 +62,7 @@ export type TypeRuntime = {
 
 export type TypeFunc = (context: TypeRuntime) => Record<string, NormalizedNodeEntryType>;
 
-export function createTypeRuntime(meta: NativeNodeMeta): TypeRuntime {
+export function createTypeRuntime(meta: NodeMeta): TypeRuntime {
   return {
     args: meta.inputs.reduce<Record<string, NormalizedNodeEntryType>>((acc, input) => {
       acc[input.name] = input.type;
@@ -72,15 +76,12 @@ export type ExecResult = {
   reason: 'unavailable';
 } | {
   success: false;
-  reason: 'not-ready';
-} | {
-  success: false;
   reason: 'validate-failed';
-  error: ValError;
+  error: ValidateError[];
 } | {
   success: false;
   reason: 'exception';
-  error: unknown;
+  error: ExceptionError;
 } | {
   success: 'data-ready';
   infuences: Record<string, unknown>;
@@ -89,118 +90,306 @@ export type ExecResult = {
   infuences: Record<string, NormalizedNodeEntryType>;
 };
 
+export class NotReady {
+  constructor() {
+    Object.setPrototypeOf(this, NotReady.prototype);
+  }
+}
+
 export type ExecRuntime = {
   meta: NodeMeta;
   args: Record<string, unknown>;
+  makeNotReady: () => NotReady;
+  makeNotImplemented: () => NotImplemented;
 };
+
+export function createExecRuntime(meta: NodeMeta, data: NodeData): ExecRuntime {
+  const args: ExecRuntime['args'] = {};
+  for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
+    if (entryData.runtime.state === 'data-ready') {
+      args[entryMeta.name] = entryData.runtime.data;
+    }
+  }
+  return {
+    meta,
+    args,
+    makeNotReady: () => new NotReady(),
+    makeNotImplemented: () => new NotImplemented('Not implemented.'),
+  };
+}
 
 export type ExecFunc = (context: ExecRuntime) => Record<string, unknown>;
 
-export function getNodeEntryData(nodeData: AFNodeData, entryId: string, entryType: 'input' | 'output') {
-  const entries = entryType === 'input' ? nodeData.inputs : nodeData.outputs;
-  return entries.find(e => e.config.name === entryId);
+export function getInputNodeEntryData(nodeData: AFNodeData, entryId: string) {
+  return nodeData.inputs.find(e => e.config.name === entryId);
 }
 
-function dealWithExecResult(result: Record<string, unknown>, meta: NativeNodeMeta, data: BaseNodeData): ExecResult {
+export function getOutputNodeEntryData(nodeData: AFNodeData, entryId: string) {
+  return nodeData.outputs.find(e => e.config.name === entryId);
+}
+
+function nodeInputs(nodeMeta: NodeMeta, nodeData: NodeData) {
+  let i = 0;
+  const baseInputLen = nodeMeta.inputs.length;
+  const inputLen = baseInputLen + (nodeData.metaExtend ? nodeData.metaExtend.inputs.length : 0);
+  return {
+    *[Symbol.iterator]() {
+      while (i < inputLen) {
+        if (i < nodeMeta.inputs.length) {
+          yield {
+            meta: nodeMeta.inputs[i],
+            data: nodeData.inputs[i],
+          };
+        } else {
+          yield {
+            meta: nodeData.metaExtend!.inputs![i - baseInputLen],
+            data: nodeData.inputs[i],
+          };
+        }
+        i++;
+      }
+    }
+  }
+}
+
+function nodeOutputs(nodeMeta: NodeMeta, nodeData: NodeData) {
+  let i = 0;
+  const baseOutputLen = nodeMeta.outputs.length;
+  const outputLen = baseOutputLen + (nodeData.metaExtend ? nodeData.metaExtend.outputs.length : 0);
+  return {
+    *[Symbol.iterator]() {
+      while (i < outputLen) {
+        if (i < nodeMeta.outputs.length) {
+          yield {
+            meta: nodeMeta.outputs[i],
+            data: nodeData.outputs[i],
+          };
+        } else {
+          yield {
+            meta: nodeData.metaExtend!.outputs![i - baseOutputLen],
+            data: nodeData.outputs[i],
+          };
+        }
+        i++;
+      }
+    }
+  }
+}
+
+function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, data: NodeData): ExecResult {
   if (typeof result !== 'object') {
-    return { success: false, reason: 'exception', error: 'Result is not an object.' };
+    return { success: false, reason: 'exception', error: { message: 'Result is not an object.' } };
   }
   const infuences: Record<string, unknown> = {};
-  for (let i = 0; i < meta.outputs.length; i++) {
-    const outputMeta = meta.outputs[i];
-    if (!(outputMeta.name in result)) {
-      if (outputMeta.optional) {
+  const validateErrors: ValidateError[] = [];
+  for (const { meta: entryMeta, data: entryData } of nodeOutputs(meta, data)) {
+    if (entryMeta.name in result) {
+      const value = result[entryMeta.name];
+      if (value instanceof NotReady) {
+        entryData.runtime.state = 'unavailable';
+        entryData.runtime.data = undefined;
+        entryData.runtime.type = undefined;
         continue;
-      } else {
-        return { success: false, reason: 'exception', error: `Output "${outputMeta.name}" is missing.` };
       }
-    }
-    const value = result[outputMeta.name];
-    try {
-      validateNodeEntryData(value, outputMeta);
-    } catch (error) {
-      if (error instanceof ValError) {
-        return { success: false, reason: 'validate-failed', error };
-      } else {
-        return { success: false, reason: 'exception', error };
+      if (entryData.runtime.state === 'data-ready' && entryData.runtime.data === value) {
+        continue;
       }
-    }
-    const outputData = data.outputs[i];
-    if (outputData.runtime.data !== value) {
-      outputData.runtime.data = value;
-      outputData.runtime.state = 'data-ready';
-      outputData.runtime.type = getTypeFromData(value);
-      infuences[outputMeta.name] = value;
+      entryData.runtime.data = value;
+      if (entryMeta.recommandLevel < RecommandLevel.NORMAL) {
+        const validateError: ValidateError = {
+          level: 'info',
+          entries: [entryMeta.name],
+          message: '',
+        };
+        if (entryMeta.recommandLevel === RecommandLevel.DEPRECATED) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is not recommand.`;
+        } else {
+          validateError.level = 'error';
+          validateError.message = `Output "${entryMeta.name}" is not permit.`;
+        }
+        validateErrors.push(validateError);
+        if (validateError.level === 'error') {
+          entryData.runtime.state = 'validate-failed';
+          entryData.runtime.type = undefined;
+          continue;
+        }
+      }
+      try {
+        validateNodeEntryData(value, entryMeta, entryData);
+      } catch (error) {
+        if (error instanceof ValError) {
+          entryData.runtime.state = 'validate-failed';
+          entryData.runtime.type = undefined;
+          validateErrors.push({
+            level: 'error',
+            entries: error.entries,
+            message: error.message,
+          });
+          continue;
+        }
+        throw error;
+      }
+      entryData.runtime.state = 'data-ready';
+      entryData.runtime.type = getTypeFromData(value);
+      infuences[entryMeta.name] = value;
+    } else {
+      entryData.runtime.state = 'unavailable';
+      entryData.runtime.data = undefined;
+      entryData.runtime.type = undefined;
+      if (entryMeta.recommandLevel > RecommandLevel.NORMAL) {
+        const validateError: ValidateError = {
+          level: 'info',
+          entries: [entryMeta.name],
+          message: '',
+        };
+        if (entryMeta.recommandLevel === RecommandLevel.RECOMMAND) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is recommand.`;
+        } else if (entryMeta.recommandLevel === RecommandLevel.SHOULD) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is super recommand.`;
+        } else {
+          validateError.level = 'error';
+          validateError.message = `Output "${entryMeta.name}" is required.`;
+        }
+        validateErrors.push(validateError);
+      }
     }
   }
-  return { success: 'data-ready', infuences };
+  if (validateErrors.length > 0) {
+    data.outputError = {
+      validates: validateErrors,
+    };
+    return { success: false, reason: 'validate-failed', error: validateErrors };
+  } else {
+    return {
+      success: 'data-ready',
+      infuences,
+    }
+  }
 }
 
-function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, meta: NativeNodeMeta, data: BaseNodeData): ExecResult {
+function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, meta: NodeMeta, data: NodeData): ExecResult {
   if (typeof result !== 'object') {
-    return { success: false, reason: 'exception', error: 'Result is not an object.' };
+    return { success: false, reason: 'exception', error: { message: 'Result is not an object.' } };
   }
   const infuences: Record<string, NormalizedNodeEntryType> = {};
-  for (let i = 0; i < meta.outputs.length; i++) {
-    const outputMeta = meta.outputs[i];
-    if (!(outputMeta.name in result)) {
-      if (outputMeta.optional) {
+  const validateErrors: ValidateError[] = [];
+  for (const { meta: entryMeta, data: entryData } of nodeOutputs(meta, data)) {
+    entryData.runtime.data = undefined;
+    if (entryMeta.name in result) {
+      const type = result[entryMeta.name];
+      if (type instanceof NotReady) {
+        entryData.runtime.state = 'unavailable';
+        entryData.runtime.type = undefined;
         continue;
-      } else {
-        return { success: false, reason: 'exception', error: `Output "${outputMeta.name}" is missing.` };
+      }
+      if (entryData.runtime.state === 'type-ready' && compareNodeEntryType(entryData.runtime.type, type) === 0) {
+        continue;
+      }
+      if (entryMeta.recommandLevel < RecommandLevel.NORMAL) {
+        const validateError: ValidateError = {
+          level: 'info',
+          entries: [entryMeta.name],
+          message: '',
+        };
+        if (entryMeta.recommandLevel === RecommandLevel.DEPRECATED) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is not recommand.`;
+        } else {
+          validateError.level = 'error';
+          validateError.message = `Output "${entryMeta.name}" is not permit.`;
+        }
+        validateErrors.push(validateError);
+        if (validateError.level === 'error') {
+          entryData.runtime.state = 'validate-failed';
+          entryData.runtime.type = undefined;
+          continue;
+        }
+      }
+      if (!mustNodeEntryTypeAssignTo(entryMeta.type, type)) {
+        entryData.runtime.state = 'validate-failed';
+        entryData.runtime.type = type;
+        validateErrors.push({
+          level: 'error',
+          entries: [entryMeta.name],
+          message: `Type mismatch. Expected ${entryMeta.type}, but got ${type}.`,
+        });
+        continue;
+      }
+      entryData.runtime.state = 'type-ready'
+      entryData.runtime.type = type;
+      infuences[entryMeta.name] = type;
+    } else {
+      entryData.runtime.state = 'unavailable';
+      entryData.runtime.data = undefined;
+      entryData.runtime.type = undefined;
+      if (entryMeta.recommandLevel > RecommandLevel.NORMAL) {
+        const validateError: ValidateError = {
+          level: 'info',
+          entries: [entryMeta.name],
+          message: '',
+        };
+        if (entryMeta.recommandLevel === RecommandLevel.RECOMMAND) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is recommand.`;
+        } else if (entryMeta.recommandLevel === RecommandLevel.SHOULD) {
+          validateError.level = 'warning';
+          validateError.message = `Output "${entryMeta.name}" is super recommand.`;
+        } else {
+          validateError.level = 'error';
+          validateError.message = `Output "${entryMeta.name}" is required.`;
+        }
+        validateErrors.push(validateError);
       }
     }
-    const value = result[outputMeta.name];
-    if (!mustNodeEntryTypeAssignTo(outputMeta.type, value)) {
-      return { success: false, reason: 'validate-failed', error: new ValError('Type mismatch', [outputMeta]) };
-    }
-    const outputData = data.outputs[i];
-    if (outputData.runtime.type !== value) {
-      outputData.runtime.type = value;
-      outputData.runtime.state = 'type-ready';
-      infuences[outputMeta.name] = value;
-    }
   }
-  return { success: 'type-ready', infuences };
-}
-
-function setEntryDataRuntimeData(entryData: NodeEntryData, data: unknown): void {
-  entryData.runtime.data = data;
-  entryData.runtime.state = 'data-ready';
-  entryData.runtime.type = getTypeFromData(data);
-  entryData.runtime.error = undefined;
-}
-
-function setEntryDataRuntimeType(entryData: NodeEntryData, type: NormalizedNodeEntryType): void {
-  entryData.runtime.data = undefined;
-  entryData.runtime.state = 'type-ready';
-  entryData.runtime.type = type;
-  entryData.runtime.error = undefined;
-}
-
-function setEntryDataRuntimeError(entryData: NodeEntryData, error: unknown): void {
-  entryData.runtime.data = undefined;
-  entryData.runtime.state = 'error';
-  entryData.runtime.type = undefined;
-  if (error instanceof ValError) {
-    entryData.runtime.error = {
-      reason: 'validate-failed',
-      error,
+  if (validateErrors.length > 0) {
+    data.outputError = {
+      validates: validateErrors,
     };
+    return { success: false, reason: 'validate-failed', error: validateErrors };
   } else {
-    entryData.runtime.error = {
-      reason: 'exception',
-      error,
-    };
+    return {
+      success: 'type-ready',
+      infuences,
+    }
   }
 }
 
-function setEntryDataRuntimeInitOrUnavailable(entryData: NodeEntryData, init: boolean): void {
-  entryData.runtime.data = undefined;
-  entryData.runtime.state = init ? 'init' : 'unavailable';
-  entryData.runtime.type = undefined;
-  entryData.runtime.error = undefined;
+function setEntryDataRuntimeData(runtime: NodeEntryRuntime, data: unknown): void {
+  runtime.data = data;
+  runtime.state = 'data-ready';
+  runtime.type = getTypeFromData(data);
 }
+
+function setEntryDataRuntimeType(runtime: NodeEntryRuntime, type: NormalizedNodeEntryType): void {
+  runtime.data = undefined;
+  runtime.state = 'type-ready';
+  runtime.type = type;
+}
+
+function setEntryDataRuntimeInitOrUnavailable(runtime: NodeEntryRuntime, init: boolean): void {
+  runtime.data = undefined;
+  runtime.state = init ? 'init' : 'unavailable';
+  runtime.type = undefined;
+}
+
+function setNodeDataOutputError(data: NodeData, error: unknown): void {
+  data.outputError = {
+    validates: [],
+    exception: {
+      message: errorToString(error),
+    }
+  };
+  for (const entry of data.outputs) {
+    entry.runtime.state = 'unavailable';
+    entry.runtime.data = undefined;
+    entry.runtime.type = undefined;
+  }
+}
+
 
 function calcNodeInputsState(nodeData: NodeData, nodeMeta: NodeMeta): 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error' {
   let targetNum = 0;
@@ -242,38 +431,41 @@ function prepareDependencies(runtimeContext: RuntimeContext, data: NodeData, for
   const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
   for (const entry of Object.keys(dependencies)) {
     const dependency = dependencies[entry];
-    const entryData = getNodeEntryData(dependency.data, dependency.entry, 'output');
+    const entryData = getOutputNodeEntryData(dependency.data, dependency.entry);
     if (!entryData) {
       throw new Error('Entry data not found.');
     }
-    const dependentEntryData = getNodeEntryData(data, entry, 'input');
+    const dependentEntryData = getInputNodeEntryData(data, entry);
     if (!dependentEntryData) {
       throw new Error('Dependent entry data not found.');
     }
     if (entryData.runtime.state === 'data-ready') {
-      setEntryDataRuntimeData(dependentEntryData, entryData.runtime.data);
+      setEntryDataRuntimeData(dependentEntryData.runtime, entryData.runtime.data);
     } else if (entryData.runtime.state === 'type-ready') {
-      setEntryDataRuntimeType(dependentEntryData, entryData.runtime.type!);
+      setEntryDataRuntimeType(dependentEntryData.runtime, entryData.runtime.type!);
     } else if (entryData.runtime.state === 'init' || force) {
       const result = prepareNode(runtimeContext, dependency.data, true);
       if (result.success && entryData.config.name in result.infuences) {
         if (result.success === 'data-ready') {
-          setEntryDataRuntimeData(dependentEntryData, result.infuences[entryData.config.name]);
+          setEntryDataRuntimeData(dependentEntryData.runtime, result.infuences[entryData.config.name]);
         } else {
-          setEntryDataRuntimeType(dependentEntryData, result.infuences[entryData.config.name]);
+          setEntryDataRuntimeType(dependentEntryData.runtime, result.infuences[entryData.config.name]);
         }
       } else if (!result.success) {
-        if (result.reason === 'unavailable' || result.reason === 'not-ready') {
-          setEntryDataRuntimeInitOrUnavailable(dependentEntryData, result.reason === 'not-ready');
-        } else {
-          setEntryDataRuntimeError(dependentEntryData, result.error);
-        }
+        setEntryDataRuntimeInitOrUnavailable(dependentEntryData.runtime, false);
       }
     }
   }
 }
 
-export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useDependencies: boolean = true, language: string = 'js'): ExecResult {
+function errorToString(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useDependencies: boolean = true): ExecResult {
   if (useDependencies) {
     prepareDependencies(runtimeContext, data);
   }
@@ -283,7 +475,68 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
   }
   const inputsState = calcNodeInputsState(data, meta);
   if (inputsState !== 'data-ready' && inputsState !== 'type-ready') {
-    return { success: false, reason: 'not-ready' };
+    return { success: false, reason: 'unavailable' };
+  }
+  if (meta.type === 'base') {
+    if (meta.frontendImpls) {
+      const runtime = createExecRuntime(meta, data);
+      if (isCode(meta.frontendImpls)) {
+        try {
+          const result = evaluate(meta.frontendImpls.code, runtime) as Record<string, unknown>;
+          return dealWithExecResult(result, meta, data);
+        } catch (error) {
+          if (!(error instanceof NotImplemented)) {
+            setNodeDataOutputError(data, error);
+            return { success: false, reason: 'exception', error: { message: errorToString(error) } };
+          }
+        }
+      } else {
+        if (!(meta.frontendImpls.ref in apis)) {
+          throw new Error(`API ${meta.frontendImpls.ref} not found.`);
+        }
+        const api = (apis as Record<string, ExecFunc>)[meta.frontendImpls.ref];
+        try {
+          const result = api(runtime);
+          return dealWithExecResult(result, meta, data);
+        } catch (error) {
+          if (!(error instanceof NotImplemented)) {
+            setNodeDataOutputError(data, error);
+            return { success: false, reason: 'exception', error: { message: errorToString(error) } };
+          }
+        }
+      }
+    }
+    if (meta.typeCode) {
+      const runtime = createTypeRuntime(meta);
+      if (isCode(meta.typeCode)) {
+        try {
+          const result = evaluate(meta.typeCode.code, runtime) as Record<string, NormalizedNodeEntryType>;
+          return dealWithTypeResult(result, meta, data);
+        } catch (error) {
+          if (!(error instanceof NotImplemented)) {
+            setNodeDataOutputError(data, error);
+            return { success: false, reason: 'exception', error: { message: errorToString(error) } };
+          }
+        }
+      } else {
+        if (!(meta.typeCode.ref in typeApis)) {
+          throw new Error(`Type API ${meta.typeCode.ref} not found.`);
+        }
+        const api = (typeApis as Record<string, TypeFunc>)[meta.typeCode.ref];
+        try {
+          const result = api(runtime);
+          return dealWithTypeResult(result, meta, data);
+        } catch (error) {
+          if (!(error instanceof NotImplemented)) {
+            setNodeDataOutputError(data, error);
+            return { success: false, reason: 'exception', error: { message: errorToString(error) } };
+          }
+        }
+      }
+    }
+    return { success: false, reason: 'unavailable' };
+  } else {
+
   }
   if (isBaseNodeData(data)) {
     if (isNativeNode(meta)) {
@@ -484,7 +737,18 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
   }
 }
 
-function getStartNodes(flowMeta: SubFlowState, flowData?: SubFlowData): AFNodeData[] {
+function flowNodes(meta: FlowState, data?: FlowData) {
+  return {
+    *[Symbol.iterator]() {
+      for (let i = 0; i < meta.nodes.length; i++) {
+        const node = meta.nodes[i];
+        yield data?.nodes[i] || node.data;
+      }
+    }
+  };
+}
+
+function getStartNodes(flowMeta: SubFlowState, flowData?: FlowData): AFNodeData[] {
   const startIds: string[] = [];
   for (let i = 0; i < flowMeta.nodes.length; i++) {
     const node = flowMeta.nodes[i];
@@ -556,13 +820,13 @@ function getFlowNodeByInflunce(meta: SubFlowState, nodeId: string, influnces: st
   return result;
 }
 
-export function execSubFlow(runtimeContext: RuntimeContext, meta: SubFlowState, data?: SubFlowData, templateMeta?: TemplateFlowState, templateData?: TemplateData): ExecResult {
+export function execSubFlow(runtimeContext: RuntimeContext, meta: SubFlowState, data: FlowData, templateMeta?: TemplateFlowState, templateData?: FlowData): ExecResult {
   if (templateMeta) {
 
   } else {
     const startNodeDatas = getStartNodes(meta, data);
     if (startNodeDatas.length === 0) {
-      return { success: true, infuences: {} };
+      return { success: 'data-ready', infuences: {} };
     }
     let currentNodes: AFNodeData[] = startNodeDatas;
     let nextNodes: AFNodeData[];

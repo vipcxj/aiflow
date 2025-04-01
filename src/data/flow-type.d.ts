@@ -1,19 +1,17 @@
 import type { Node as FlowNode, Edge as FlowEdge } from '@xyflow/react';
-import type { GeneralNodeData, SubFlowNodeData, TemplateNodeData, NodeMeta, NodeEntry, EdgeData, NormalizedNodeEntryType } from './data-type';
-import { NodeMetaBase } from './node-type';
+import type { NormalizedNodeEntryType } from './data-type';
+import type { NodeMetaBase, NodeMeta, NodeEntry, NodeData, EdgeData, NodeConfigData, EdgeConfigData } from './node-type';
 
 export type AFNodeType = string;
-export type AFGeneralNodeData = GeneralNodeData;
-export type AFSubFlowNodeData = GeneralNodeData | SubFlowNodeData;
-export type AFTemplateNodeData = GeneralNodeData | TemplateNodeData;
-export type AFNodeData = AFGeneralNodeData | AFSubFlowNodeData | AFTemplateNodeData;
-export type AFGeneralNode = FlowNode<AFGeneralNodeData, AFNodeType>;
-export type AFSubFlowNode = FlowNode<AFSubFlowNodeData, AFNodeType>;
-export type AFTemplateNode = FlowNode<AFTemplateNodeData, AFNodeType>;
-export type AFNode = AFGeneralNode | AFSubFlowNode | AFTemplateNode;
+export type AFNodeData = NodeData;
+export type AFNode = FlowNode<AFNodeData, AFNodeType>;
+export type AFConfigNodeData = NodeConfigData;
+export type AFConfigNode = FlowNode<AFConfigNodeData, AFNodeType>;
 export type AFEdgeType = undefined;
 export type AFEdgeData = EdgeData;
 export type AFEdge = FlowEdge<AFEdgeData, AFEdgeType>;
+export type AFConfigEdgeData = EdgeConfigData;
+export type AFConfigEdge = FlowEdge<AFConfigEdgeData, AFEdgeType>;
 
 export type VariableRuntime = {
   data?: unknown;
@@ -23,7 +21,13 @@ export type VariableRuntime = {
 
 export type Variable = {
   type: NormalizedNodeEntryType;
+  description?: string;
   runtime: VariableRuntime;
+}
+
+export type VariableConfig = {
+  type: NormalizedNodeEntryType;
+  description?: string;
 }
 
 export type FlowType = 'main' | 'subflow' | 'template';
@@ -35,19 +39,26 @@ type FlowStateBase = {
 
 export type MainFlowState = FlowStateBase & {
   type: 'main';
-  nodes: AFGeneralNode[];
+  nodes: AFNode[];
 };
 
 export type SubFlowState = FlowStateBase & NodeMetaBase & {
   type: 'subflow';
-  nodes: AFSubFlowNode[];
+  nodes: AFNode[];
 };
+
+export type SubFlowConfigState = NodeMetaBase & {
+  type: 'subflow';
+  nodes: AFConfigNode[];
+  edges: AFConfigEdge[];
+  variables: Record<string, VariableConfig>;
+}
 
 export type TemplateFlowState = FlowStateBase & {
   id: string;
   version?: string;
   type: 'template';
-  nodes: AFTemplateNode[];
+  nodes: AFNode[];
   inputs: NodeEntry[];
   outputs: NodeEntry[];
 };
