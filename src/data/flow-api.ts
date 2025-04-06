@@ -21,14 +21,14 @@ function parsePathName(name: string): { id: string, version: string } {
 }
 
 export function currentFlow(state: WorkspaceState): FlowState {
-  if (state.path.length === 0) {
+  if (state.routeStack.length === 0) {
     if (isAppWorkspace(state)) {
       return state.main;
     } else {
       throw new Error('Lib workspace must have a path.');
     }
   }
-  const name = state.path[state.path.length - 1];
+  const name = state.routeStack[state.routeStack.length - 1];
   const { id, version } = parsePathName(name);
   const flow = state.embeddedFlows.find(impl => impl.meta.id === id && impl.meta.version === version)?.impl;
   if (!flow) {

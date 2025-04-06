@@ -77,14 +77,14 @@ type WorkspaceStateBase = {
   nextEdgeId: number;
   title: string;
   filePath: string;
-  path: string[];
+  routeStack: string[];
   dirty: boolean;
 }
 
 export type AppWorkspaceState = WorkspaceStateBase & {
   type: 'app';
   main: MainFlowState;
-  nodes: NodeMeta[];
+  subFlows: SubFlowState[];
   templates: TemplateFlowState[];
 };
 
@@ -94,7 +94,7 @@ export type LibWorkspaceState = WorkspaceStateBase & {
   version: string;
   exportNodes: string[];
   exportTemplates: string[];
-  nodes: NodeMeta[];
+  subFlows: SubFlowState[];
   templates: TemplateFlowState[];
 };
 

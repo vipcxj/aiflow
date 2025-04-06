@@ -1,10 +1,10 @@
 import type { Code, CodeRef, NormalizedNodeEntryType } from './data-type'
-import type { SubFlowState } from './flow-type';
+import type { SubFlowConfigState } from './flow-type';
 import type { RecommandLevel } from './enum';
 
 export type NodeEntry = {
   name: string;
-  type: NormalizedNodeEntryType;
+  type: NormalizedNodeEntryType | Code;
   disableHandle?: boolean;
   recommandLevel: RecommandLevel;
   description: string;
@@ -65,15 +65,25 @@ export type NodeEntryRuntime = {
   type: undefined;
 };
 
-export type InputNodeEntryData = {
-  runtime: NodeEntryRuntime;
+export type InputNodeEntryConfigData = {
   config: InputNodeEntryConfig;
 };
 
-export type OutputNodeEntryData = {
+export type InputNodeEntryRuntimeData = {
   runtime: NodeEntryRuntime;
+}
+
+export type InputNodeEntryData = InputNodeEntryConfigData & InputNodeEntryRuntimeData;
+
+export type OutputNodeEntryConfigData = {
   config: OutputNodeEntryConfig;
 };
+
+export type OutputNodeEntryRuntimeData = {
+  runtime: NodeEntryRuntime;
+};
+
+export type OutputNodeEntryData = OutputNodeEntryConfigData & OutputNodeEntryRuntimeData;
 
 export type FlowData = {
   nodes: NodeData[];
@@ -130,15 +140,15 @@ export type NodeConfigData = NodeDataBase & {
   meta: NodeMetaRef;
   metaExtend?: NodeMetaExtend;
   collapsed: boolean;
-  inputs: InputNodeEntryConfig[];
-  outputs: OutputNodeEntryConfig[];
+  inputs: InputNodeEntryConfigData[];
+  outputs: OutputNodeEntryConfigData[];
   template?: FlowConfigData;
   flow?: FlowConfigData;
 }
 
 export type NodeRuntimeData = NodeDataBase & {
-  inputs: NodeEntryRuntime[];
-  outputs: NodeEntryRuntime[];
+  inputs: InputNodeEntryRuntimeData[];
+  outputs: OutputNodeEntryRuntimeData[];
   inputError?: NodeDataError,
   outputError?: NodeDataError,
   template?: FlowRuntimeData;

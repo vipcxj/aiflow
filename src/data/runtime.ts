@@ -1,6 +1,6 @@
 import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
 import type { NormalizedNodeEntryType } from "./data-type";
-import type { AFNodeData, FlowState, SubFlowState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
+import type { AFNodeData, FlowState, SubFlowConfigState, TemplateFlowState, TemplateRef, Variable, WorkspaceState, WorkspaceStateBase } from "./flow-type";
 import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
 import { ValError, validateNodeEntryData } from "./validate";
@@ -9,9 +9,8 @@ import typeApis from './type-apis';
 import { getGlobalNodeMetas } from "./nodes";
 import { getGlobalTemplates } from "./templates";
 import { mustNodeEntryTypeAssignTo } from "./assignable";
-import type { ExceptionError, FlowData, NodeData, NodeEntryRuntime, NodeMeta, NodeMetaRef, ValidateError } from "./node-type";
+import type { ExceptionError, FlowConfigData, FlowData, FlowRuntimeData, InputNodeEntryConfig, InputNodeEntryConfigData, InputNodeEntryData, NodeConfigData, NodeData, NodeEntry, NodeEntryRuntime, NodeMeta, NodeMetaRef, NodeRuntimeData, OutputNodeEntryConfig, OutputNodeEntryConfigData, OutputNodeEntryData, ValidateError } from "./node-type";
 import { RecommandLevel } from "./enum";
-import { isNode } from "@xyflow/react";
 import { compareNodeEntryType } from "./compare";
 
 export type RuntimeContext = {
@@ -19,7 +18,7 @@ export type RuntimeContext = {
   getFlowData: () => FlowData | undefined;
   getNodeMeta: (ref: NodeMetaRef) => NodeMeta | undefined;
   getTemplate: (ref: TemplateRef) => TemplateFlowState | undefined;
-  getVariable: (name: string) => Variable | undefined;
+  variables: Record<string, Variable>;
 };
 
 export class NotImplemented extends Error {
@@ -30,6 +29,36 @@ export class NotImplemented extends Error {
   }
 }
 
+function _currentFlowMeta(ws: WorkspaceState): FlowState {
+  const route = ws.routeStack[ws.routeStack.length - 1];
+  let flow: FlowState | undefined = ws.subFlows.find(f => f.id === route);
+  if (flow) {
+    return flow;
+  } else {
+    flow = ws.templates.find(t => t.id === route);
+    if (flow) {
+      return flow;
+    } else {
+      throw new Error(`Flow ${route} not found.`);
+    }
+  }
+}
+
+export function currentFlowMeta(ws: WorkspaceState): FlowState {
+  if (ws.type === 'app') {
+    if (ws.routeStack.length === 0) {
+      return ws.main;
+    } else {
+      return _currentFlowMeta(ws);
+    }
+  } else {
+    if (ws.routeStack.length === 0) {
+      throw new Error('No route stack.');
+    }
+    return _currentFlowMeta(ws);
+  }
+}
+
 export function createRuntimeContext(ws: WorkspaceState, flowMeta: FlowState, flowData?: FlowData): RuntimeContext {
   const globalNodeMetas = getGlobalNodeMetas();
   const globalTempaltes = getGlobalTemplates();
@@ -37,7 +66,7 @@ export function createRuntimeContext(ws: WorkspaceState, flowMeta: FlowState, fl
     getFlowMeta: () => flowMeta,
     getFlowData: () => flowData,
     getNodeMeta: (ref: NodeMetaRef) => {
-      const nodeMeta = ws.nodes.find(n => n.id === ref.id);
+      const nodeMeta = ws.subFlows.find(n => n.id === ref.id);
       if (nodeMeta && (!ref.version || nodeMeta.version === ref.version)) {
         return nodeMeta;
       }
@@ -50,24 +79,33 @@ export function createRuntimeContext(ws: WorkspaceState, flowMeta: FlowState, fl
       }
       return globalTempaltes.find(t => t.id === ref.id && (!ref.version || t.version === ref.version));
     },
-    getVariable: (name: string) => {
-      return flowMeta.variables[name];
-    },
+    variables: flowMeta.variables,
   };
 }
 
 export type TypeRuntime = {
+  meta: NodeMeta;
   args: Record<string, NormalizedNodeEntryType>;
+  vars: Record<string, Variable>;
+  makeNotReady: () => NotReady;
+  makeNotImplemented: () => NotImplemented;
 }
 
 export type TypeFunc = (context: TypeRuntime) => Record<string, NormalizedNodeEntryType>;
 
-export function createTypeRuntime(meta: NodeMeta): TypeRuntime {
+export function createTypeRuntime(runtime: RuntimeContext, meta: NodeMeta, data: NodeData): TypeRuntime {
+  const args: TypeRuntime['args'] = {};
+  for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
+    if (entryData.runtime.state === 'data-ready' || entryData.runtime.state === 'type-ready') {
+      args[entryMeta.name] = entryData.runtime.type;
+    }
+  }
   return {
-    args: meta.inputs.reduce<Record<string, NormalizedNodeEntryType>>((acc, input) => {
-      acc[input.name] = input.type;
-      return acc;
-    }, {}),
+    meta,
+    args,
+    vars: runtime.variables,
+    makeNotReady: () => new NotReady(),
+    makeNotImplemented: () => new NotImplemented('Not implemented.'),
   };
 }
 
@@ -99,11 +137,12 @@ export class NotReady {
 export type ExecRuntime = {
   meta: NodeMeta;
   args: Record<string, unknown>;
+  vars: Record<string, Variable>;
   makeNotReady: () => NotReady;
   makeNotImplemented: () => NotImplemented;
 };
 
-export function createExecRuntime(meta: NodeMeta, data: NodeData): ExecRuntime {
+export function createExecRuntime(runtime: RuntimeContext, meta: NodeMeta, data: NodeData): ExecRuntime {
   const args: ExecRuntime['args'] = {};
   for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
     if (entryData.runtime.state === 'data-ready') {
@@ -113,6 +152,7 @@ export function createExecRuntime(meta: NodeMeta, data: NodeData): ExecRuntime {
   return {
     meta,
     args,
+    vars: runtime.variables,
     makeNotReady: () => new NotReady(),
     makeNotImplemented: () => new NotImplemented('Not implemented.'),
   };
@@ -428,7 +468,7 @@ function calcNodeInputsState(nodeData: NodeData, nodeMeta: NodeMeta): 'init' | '
 function prepareDependencies(runtimeContext: RuntimeContext, data: NodeData, force: boolean = false): void {
   const flowMeta = runtimeContext.getFlowMeta();
   const flowData = runtimeContext.getFlowData();
-  const dependencies = getFlowDependencyNodes(flowMeta, data, flowData, true);
+  const dependencies = getFlowDependencyNodes(flowMeta, data, flowData);
   for (const entry of Object.keys(dependencies)) {
     const dependency = dependencies[entry];
     const entryData = getOutputNodeEntryData(dependency.data, dependency.entry);
@@ -479,7 +519,7 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
   }
   if (meta.type === 'base') {
     if (meta.frontendImpls) {
-      const runtime = createExecRuntime(meta, data);
+      const runtime = createExecRuntime(runtimeContext, meta, data);
       if (isCode(meta.frontendImpls)) {
         try {
           const result = evaluate(meta.frontendImpls.code, runtime) as Record<string, unknown>;
@@ -507,7 +547,7 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
       }
     }
     if (meta.typeCode) {
-      const runtime = createTypeRuntime(meta);
+      const runtime = createTypeRuntime(runtimeContext, meta, data);
       if (isCode(meta.typeCode)) {
         try {
           const result = evaluate(meta.typeCode.code, runtime) as Record<string, NormalizedNodeEntryType>;
@@ -737,49 +777,64 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
   }
 }
 
-function flowNodes(meta: FlowState, data?: FlowData) {
+type NodeInfo = {
+  config: NodeConfigData;
+  runtime?: NodeRuntimeData
+};
+
+function flowNodes(flowMeta: SubFlowConfigState, flowData?: FlowRuntimeData) {
   return {
     *[Symbol.iterator]() {
-      for (let i = 0; i < meta.nodes.length; i++) {
-        const node = meta.nodes[i];
-        yield data?.nodes[i] || node.data;
+      for (let i = 0; i < flowMeta.nodes.length; i++) {
+        const config = flowMeta.nodes[i].data;
+        const runtime = flowData?.nodes[i];
+        yield {
+          config,
+          runtime,
+        };
       }
     }
   };
 }
 
-function getStartNodes(flowMeta: SubFlowState, flowData?: FlowData): AFNodeData[] {
-  const startIds: string[] = [];
-  for (let i = 0; i < flowMeta.nodes.length; i++) {
-    const node = flowMeta.nodes[i];
-    const data = flowData?.nodes[i] || node.data;
-    if (isStartNodeData(data)) {
-      startIds.push(node.id);
-    }
-  }
-  if (startIds.length === 0) {
-    return [];
-  }
-  const nodeIds: string[] = [];
+function getStartNodes(flowMeta: SubFlowConfigState, flowData?: FlowRuntimeData): NodeInfo[] {
+  const result: NodeInfo[] = [];
+  const targets: Set<string> = new Set();
   for (const edge of flowMeta.edges) {
-    if (startIds.indexOf(edge.source) !== -1) {
-      nodeIds.push(edge.target);
+    targets.add(edge.target);
+  }
+  for (const info of flowNodes(flowMeta, flowData)) {
+    if (!(info.config.id in targets)) {
+      result.push(info);
     }
   }
-  return nodeIds.map(id => getFlowNodeById(flowMeta, id, flowData)).filter(v => !!v);
+  return result;
 }
 
-type InfluncedNodeData = {
+type InfluncedNodeInfo = {
   entry: string;
-  data: AFNodeData;
+  data: NodeData | {
+    config: NodeConfigData;
+    runtime?: NodeRuntimeData;
+  };
 }
 
-function getFlowDependencyNodes(meta: FlowState, nodeData: AFNodeData, data?: SubFlowData, onlyNotReady: boolean = true): Record<string, InfluncedNodeData> {
-  const inputs = nodeData.inputs.filter(entry => (!onlyNotReady || !entry.runtime.ready)).map(entry => entry.config.name);
+function entryName(value: NodeEntry | InputNodeEntryData | InputNodeEntryConfigData | InputNodeEntryConfig | OutputNodeEntryData | OutputNodeEntryConfigData | OutputNodeEntryConfig): string {
+  if ("config" in value) {
+    return value.config.name;
+  } else {
+    return value.name;
+  }
+}
+
+type GeneralFlowData = FlowData | { config: FlowConfigData, runtime: FlowRuntimeData };
+
+function getFlowDependencyNodes(meta: FlowState, nodeData: NodeData | NodeConfigData, data?: GeneralFlowData): Record<string, InfluncedNodeInfo> {
+  const inputs = nodeData.inputs.map(entryName);
   if (inputs.length === 0) {
     return {};
   }
-  const result: Record<string, InfluncedNodeData> = {};
+  const result: Record<string, InfluncedNodeInfo> = {};
   for (const edge of meta.edges) {
     if (edge.target === nodeData.id && edge.targetHandle && inputs.indexOf(edge.targetHandle) !== -1) {
       const node = getFlowNodeById(meta, edge.source, data);
@@ -794,18 +849,29 @@ function getFlowDependencyNodes(meta: FlowState, nodeData: AFNodeData, data?: Su
   return result;
 }
 
-function getFlowNodeById(meta: FlowState, id: string, data?: SubFlowData): AFNodeData | undefined {
+function getFlowNodeById(meta: FlowState, id: string, data?: GeneralFlowData): InfluncedNodeInfo['data'] | undefined {
   for (let i = 0; i < meta.nodes.length; i++) {
     const node = meta.nodes[i];
     if (node.id === id) {
-      return data?.nodes[i] || node.data;
+      if (data) {
+        if ("config" in data) {
+          return {
+            config: data.config.nodes[i],
+            runtime: data.runtime.nodes[i],
+          };
+        } else {
+          return data.nodes[i];
+        }
+      } else {
+        return meta.nodes[i].data;
+      }
     }
   }
   return undefined;
 }
 
-function getFlowNodeByInflunce(meta: SubFlowState, nodeId: string, influnces: string[], data?: SubFlowData): Record<string, InfluncedNodeData> {
-  const result: Record<string, InfluncedNodeData> = {};
+function getFlowNodeByInflunce(meta: FlowState, nodeId: string, influnces: string[], data?: GeneralFlowData): Record<string, InfluncedNodeInfo> {
+  const result: Record<string, InfluncedNodeInfo> = {};
   for (const edge of meta.edges) {
     if (edge.source === nodeId && edge.sourceHandle && influnces.indexOf(edge.sourceHandle) !== -1) {
       const nodeData = getFlowNodeById(meta, edge.target, data);
@@ -820,7 +886,7 @@ function getFlowNodeByInflunce(meta: SubFlowState, nodeId: string, influnces: st
   return result;
 }
 
-export function execSubFlow(runtimeContext: RuntimeContext, meta: SubFlowState, data: FlowData, templateMeta?: TemplateFlowState, templateData?: FlowData): ExecResult {
+export function execSubFlow(runtimeContext: RuntimeContext, meta: FlowState, data: GeneralFlowData, templateMeta?: TemplateFlowState, templateData?: GeneralFlowData): ExecResult {
   if (templateMeta) {
 
   } else {
