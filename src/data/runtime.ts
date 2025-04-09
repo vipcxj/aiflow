@@ -1,6 +1,6 @@
-import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isStartNodeData, isSwitchNodeData, isVariableNodeData } from "./data-guard";
+import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isSwitchNodeData, isVariableNodeData } from "./data-guard";
 import type { NormalizedNodeEntryType } from "./data-type";
-import type { AFNodeData, FlowState, SubFlowConfigState, TemplateFlowState, TemplateRef, Variable, WorkspaceState, WorkspaceStateBase } from "./flow-type";
+import type { AFNodeData, FlowState, SubFlowConfigState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
 import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
 import { ValError, validateNodeEntryData } from "./validate";
@@ -93,11 +93,12 @@ export type TypeRuntime = {
 
 export type TypeFunc = (context: TypeRuntime) => Record<string, NormalizedNodeEntryType>;
 
-export function createTypeRuntime(runtime: RuntimeContext, meta: NodeMeta, data: NodeData): TypeRuntime {
+export function createTypeRuntime(runtime: RuntimeContext, meta: NodeMeta, data: GeneralNodeData): TypeRuntime {
   const args: TypeRuntime['args'] = {};
   for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
-    if (entryData.runtime.state === 'data-ready' || entryData.runtime.state === 'type-ready') {
-      args[entryMeta.name] = entryData.runtime.type;
+    const entryRuntime = getEntryDataRuntime(entryData);
+    if (entryRuntime.state === 'data-ready' || entryRuntime.state === 'type-ready') {
+      args[entryMeta.name] = entryRuntime.type;
     }
   }
   return {
@@ -142,11 +143,12 @@ export type ExecRuntime = {
   makeNotImplemented: () => NotImplemented;
 };
 
-export function createExecRuntime(runtime: RuntimeContext, meta: NodeMeta, data: NodeData): ExecRuntime {
+export function createExecRuntime(runtime: RuntimeContext, meta: NodeMeta, data: GeneralNodeData): ExecRuntime {
   const args: ExecRuntime['args'] = {};
   for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
-    if (entryData.runtime.state === 'data-ready') {
-      args[entryMeta.name] = entryData.runtime.data;
+    const entryRuntime = getEntryDataRuntime(entryData);
+    if (entryRuntime.state === 'data-ready') {
+      args[entryMeta.name] = entryRuntime.data;
     }
   }
   return {
@@ -162,19 +164,83 @@ export type ExecFunc = (context: ExecRuntime) => Record<string, unknown>;
 
 type NodeDataPair = {
   config: NodeConfigData;
-  runtime?: NodeRuntimeData;
+  runtime: NodeRuntimeData;
 };
 
 type GeneralNodeData = NodeData | NodeDataPair;
 
+function getNodeDataId(data: GeneralNodeData) {
+  if ('config' in data) {
+    return data.config.id;
+  } else {
+    return data.id;
+  }
+}
+
+function getNodeDataMeta(data: GeneralNodeData) {
+  if ('config' in data) {
+    return data.config.meta;
+  } else {
+    return data.meta;
+  }
+}
+
+function getNodeDataMetaExtend(data: GeneralNodeData) {
+  if ('config' in data) {
+    return data.config.metaExtend;
+  } else {
+    return data.metaExtend;
+  }
+}
+
+function getNodeDataInputs(data: NodeData): InputNodeEntryData[];
+function getNodeDataInputs(data: NodeDataPair): InputNodeEntryDataPair[];
+function getNodeDataInputs(data: GeneralNodeData): InputNodeEntryDataPair[] | InputNodeEntryData[];
+function getNodeDataInputs(data: GeneralNodeData): InputNodeEntryDataPair[] | InputNodeEntryData[] {
+  if ('config' in data) {
+    const result: InputNodeEntryDataPair[] = [];
+    for (let i = 0; i < data.config.inputs.length; i++) {
+      const entryConfigData = data.config.inputs[i];
+      const entryRuntimeData = data.runtime.inputs[i];
+      result.push({
+        config: entryConfigData,
+        runtime: entryRuntimeData,
+      });
+    }
+    return result;
+  } else {
+    return data.inputs;
+  }
+}
+
+function getNodeDataOutputs(data: NodeData): OutputNodeEntryData[];
+function getNodeDataOutputs(data: NodeDataPair): OutputNodeEntryDataPair[];
+function getNodeDataOutputs(data: GeneralNodeData): OutputNodeEntryDataPair[] | OutputNodeEntryData[];
+function getNodeDataOutputs(data: GeneralNodeData): OutputNodeEntryDataPair[] | OutputNodeEntryData[] {
+  if ('config' in data) {
+    const result: OutputNodeEntryDataPair[] = [];
+    for (let i = 0; i < data.config.outputs.length; i++) {
+      const entryConfigData = data.config.outputs[i];
+      const entryRuntimeData = data.runtime.outputs[i];
+      result.push({
+        config: entryConfigData,
+        runtime: entryRuntimeData,
+      });
+    }
+    return result;
+  } else {
+    return data.outputs;
+  }
+}
+
 type InputNodeEntryDataPair = {
   config: InputNodeEntryConfigData;
-  runtime?: InputNodeEntryRuntimeData;
+  runtime: InputNodeEntryRuntimeData;
 }
 
 type OutputNodeEntryDataPair = {
   config: OutputNodeEntryConfigData;
-  runtime?: OutputNodeEntryRuntimeData;
+  runtime: OutputNodeEntryRuntimeData;
 }
 
 function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair) {
@@ -185,12 +251,9 @@ function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | 
   }
 }
 
-function getEntryDataRuntime(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair | undefined) {
-  if (!data) {
-    return undefined;
-  }
+function getEntryDataRuntime(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair) {
   if ('config' in data.config) {
-    return (data as (InputNodeEntryDataPair | OutputNodeEntryDataPair)).runtime?.runtime;
+    return (data as (InputNodeEntryDataPair | OutputNodeEntryDataPair)).runtime.runtime;
   } else {
     return (data as InputNodeEntryData | OutputNodeEntryData).runtime;
   }
@@ -238,22 +301,24 @@ export function getOutputNodeEntryData(nodeData: GeneralNodeData, entryId: strin
   }
 }
 
-function nodeInputs(nodeMeta: NodeMeta, nodeData: NodeData) {
+function nodeInputs(nodeMeta: NodeMeta, nodeData: GeneralNodeData) {
   let i = 0;
   const baseInputLen = nodeMeta.inputs.length;
-  const inputLen = baseInputLen + (nodeData.metaExtend ? nodeData.metaExtend.inputs.length : 0);
+  const nodeMetaExtend = getNodeDataMetaExtend(nodeData);
+  const inputLen = baseInputLen + (nodeMetaExtend ? nodeMetaExtend.inputs.length : 0);
   return {
     *[Symbol.iterator]() {
+      const dataInputs = getNodeDataInputs(nodeData);
       while (i < inputLen) {
         if (i < nodeMeta.inputs.length) {
           yield {
             meta: nodeMeta.inputs[i],
-            data: nodeData.inputs[i],
+            data: dataInputs[i],
           };
         } else {
           yield {
-            meta: nodeData.metaExtend!.inputs![i - baseInputLen],
-            data: nodeData.inputs[i],
+            meta: nodeMetaExtend!.inputs![i - baseInputLen],
+            data: dataInputs[i],
           };
         }
         i++;
@@ -262,22 +327,24 @@ function nodeInputs(nodeMeta: NodeMeta, nodeData: NodeData) {
   }
 }
 
-function nodeOutputs(nodeMeta: NodeMeta, nodeData: NodeData) {
+function nodeOutputs(nodeMeta: NodeMeta, nodeData: GeneralNodeData) {
   let i = 0;
   const baseOutputLen = nodeMeta.outputs.length;
-  const outputLen = baseOutputLen + (nodeData.metaExtend ? nodeData.metaExtend.outputs.length : 0);
+  const nodeMetaExtend = getNodeDataMetaExtend(nodeData);
+  const outputLen = baseOutputLen + (nodeMetaExtend ? nodeMetaExtend.outputs.length : 0);
   return {
     *[Symbol.iterator]() {
+      const dataOutputs = getNodeDataOutputs(nodeData);
       while (i < outputLen) {
         if (i < nodeMeta.outputs.length) {
           yield {
             meta: nodeMeta.outputs[i],
-            data: nodeData.outputs[i],
+            data: dataOutputs[i],
           };
         } else {
           yield {
-            meta: nodeData.metaExtend!.outputs![i - baseOutputLen],
-            data: nodeData.outputs[i],
+            meta: nodeMetaExtend!.outputs![i - baseOutputLen],
+            data: dataOutputs[i],
           };
         }
         i++;
@@ -286,25 +353,26 @@ function nodeOutputs(nodeMeta: NodeMeta, nodeData: NodeData) {
   }
 }
 
-function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, data: NodeData): ExecResult {
+function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, data: GeneralNodeData): ExecResult {
   if (typeof result !== 'object') {
     return { success: false, reason: 'exception', error: { message: 'Result is not an object.' } };
   }
   const infuences: Record<string, unknown> = {};
   const validateErrors: ValidateError[] = [];
   for (const { meta: entryMeta, data: entryData } of nodeOutputs(meta, data)) {
+    const entryRuntime = getEntryDataRuntime(entryData);
     if (entryMeta.name in result) {
       const value = result[entryMeta.name];
       if (value instanceof NotReady) {
-        entryData.runtime.state = 'unavailable';
-        entryData.runtime.data = undefined;
-        entryData.runtime.type = undefined;
+        entryRuntime.state = 'unavailable';
+        entryRuntime.data = undefined;
+        entryRuntime.type = undefined;
         continue;
       }
-      if (entryData.runtime.state === 'data-ready' && entryData.runtime.data === value) {
+      if (entryRuntime.state === 'data-ready' && entryRuntime.data === value) {
         continue;
       }
-      entryData.runtime.data = value;
+      entryRuntime.data = value;
       if (entryMeta.recommandLevel < RecommandLevel.NORMAL) {
         const validateError: ValidateError = {
           level: 'info',
@@ -320,8 +388,8 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, dat
         }
         validateErrors.push(validateError);
         if (validateError.level === 'error') {
-          entryData.runtime.state = 'validate-failed';
-          entryData.runtime.type = undefined;
+          entryRuntime.state = 'validate-failed';
+          entryRuntime.type = undefined;
           continue;
         }
       }
@@ -329,8 +397,8 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, dat
         validateNodeEntryData(value, entryMeta, entryData);
       } catch (error) {
         if (error instanceof ValError) {
-          entryData.runtime.state = 'validate-failed';
-          entryData.runtime.type = undefined;
+          entryRuntime.state = 'validate-failed';
+          entryRuntime.type = undefined;
           validateErrors.push({
             level: 'error',
             entries: error.entries,
@@ -340,13 +408,13 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, dat
         }
         throw error;
       }
-      entryData.runtime.state = 'data-ready';
-      entryData.runtime.type = getTypeFromData(value);
+      entryRuntime.state = 'data-ready';
+      entryRuntime.type = getTypeFromData(value);
       infuences[entryMeta.name] = value;
     } else {
-      entryData.runtime.state = 'unavailable';
-      entryData.runtime.data = undefined;
-      entryData.runtime.type = undefined;
+      entryRuntime.state = 'unavailable';
+      entryRuntime.data = undefined;
+      entryRuntime.type = undefined;
       if (entryMeta.recommandLevel > RecommandLevel.NORMAL) {
         const validateError: ValidateError = {
           level: 'info',
@@ -368,9 +436,9 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, dat
     }
   }
   if (validateErrors.length > 0) {
-    data.outputError = {
+    setNodeDataOutputError(data, {
       validates: validateErrors,
-    };
+    });
     return { success: false, reason: 'validate-failed', error: validateErrors };
   } else {
     return {
@@ -380,22 +448,23 @@ function dealWithExecResult(result: Record<string, unknown>, meta: NodeMeta, dat
   }
 }
 
-function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, meta: NodeMeta, data: NodeData): ExecResult {
+function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, meta: NodeMeta, data: GeneralNodeData): ExecResult {
   if (typeof result !== 'object') {
     return { success: false, reason: 'exception', error: { message: 'Result is not an object.' } };
   }
   const infuences: Record<string, NormalizedNodeEntryType> = {};
   const validateErrors: ValidateError[] = [];
   for (const { meta: entryMeta, data: entryData } of nodeOutputs(meta, data)) {
-    entryData.runtime.data = undefined;
+    const entryRuntime = getEntryDataRuntime(entryData);
+    entryRuntime.data = undefined;
     if (entryMeta.name in result) {
       const type = result[entryMeta.name];
       if (type instanceof NotReady) {
-        entryData.runtime.state = 'unavailable';
-        entryData.runtime.type = undefined;
+        entryRuntime.state = 'unavailable';
+        entryRuntime.type = undefined;
         continue;
       }
-      if (entryData.runtime.state === 'type-ready' && compareNodeEntryType(entryData.runtime.type, type) === 0) {
+      if (entryRuntime.state === 'type-ready' && compareNodeEntryType(entryRuntime.type, type) === 0) {
         continue;
       }
       if (entryMeta.recommandLevel < RecommandLevel.NORMAL) {
@@ -413,14 +482,14 @@ function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, met
         }
         validateErrors.push(validateError);
         if (validateError.level === 'error') {
-          entryData.runtime.state = 'validate-failed';
-          entryData.runtime.type = undefined;
+          entryRuntime.state = 'validate-failed';
+          entryRuntime.type = undefined;
           continue;
         }
       }
       if (!mustNodeEntryTypeAssignTo(entryMeta.type, type)) {
-        entryData.runtime.state = 'validate-failed';
-        entryData.runtime.type = type;
+        entryRuntime.state = 'validate-failed';
+        entryRuntime.type = type;
         validateErrors.push({
           level: 'error',
           entries: [entryMeta.name],
@@ -428,13 +497,13 @@ function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, met
         });
         continue;
       }
-      entryData.runtime.state = 'type-ready'
-      entryData.runtime.type = type;
+      entryRuntime.state = 'type-ready'
+      entryRuntime.type = type;
       infuences[entryMeta.name] = type;
     } else {
-      entryData.runtime.state = 'unavailable';
-      entryData.runtime.data = undefined;
-      entryData.runtime.type = undefined;
+      entryRuntime.state = 'unavailable';
+      entryRuntime.data = undefined;
+      entryRuntime.type = undefined;
       if (entryMeta.recommandLevel > RecommandLevel.NORMAL) {
         const validateError: ValidateError = {
           level: 'info',
@@ -456,9 +525,9 @@ function dealWithTypeResult(result: Record<string, NormalizedNodeEntryType>, met
     }
   }
   if (validateErrors.length > 0) {
-    data.outputError = {
+    setNodeDataOutputError(data, {
       validates: validateErrors,
-    };
+    });
     return { success: false, reason: 'validate-failed', error: validateErrors };
   } else {
     return {
@@ -486,17 +555,28 @@ function setEntryDataRuntimeInitOrUnavailable(runtime: NodeEntryRuntime, init: b
   runtime.type = undefined;
 }
 
-function setNodeDataOutputError(data: NodeData, error: unknown): void {
-  data.outputError = {
-    validates: [],
-    exception: {
-      message: errorToString(error),
-    }
-  };
-  for (const entry of data.outputs) {
-    entry.runtime.state = 'unavailable';
-    entry.runtime.data = undefined;
-    entry.runtime.type = undefined;
+function setNodeDataOutputError(data: GeneralNodeData, error: unknown): void {
+  if ('config' in data) {
+    data.runtime.outputError = {
+      validates: [],
+      exception: {
+        message: errorToString(error),
+      }
+    };
+  } else {
+    data.outputError = {
+      validates: [],
+      exception: {
+        message: errorToString(error),
+      }
+    };
+  }
+  const outputs = getNodeDataOutputs(data);
+  for (const entry of outputs) {
+    const entryRuntime = getEntryDataRuntime(entry);
+    entryRuntime.state = 'unavailable';
+    entryRuntime.data = undefined;
+    entryRuntime.type = undefined;
   }
 }
 
@@ -535,7 +615,7 @@ function calcNodeInputsState(nodeData: NodeData, nodeMeta: NodeMeta): 'init' | '
   }
 }
 
-function prepareDependencies(runtimeContext: RuntimeContext, data: NodeData, force: boolean = false): void {
+function prepareDependencies(runtimeContext: RuntimeContext, data: GeneralNodeData, force: boolean = false): void {
   const flowMeta = runtimeContext.getFlowMeta();
   const flowData = runtimeContext.getFlowData();
   const dependencies = getFlowDependencyNodes(flowMeta, data, flowData);
@@ -549,25 +629,23 @@ function prepareDependencies(runtimeContext: RuntimeContext, data: NodeData, for
     if (!dependentEntryData) {
       throw new Error('Dependent entry data not found.');
     }
+    const dependentEntryRuntime = getEntryDataRuntime(dependentEntryData);
     const entryConfig = getEntryDataConfig(entryData);
     const entryRuntime = getEntryDataRuntime(entryData);
-    if (!entryRuntime) {
-      throw new Error('Entry runtime not found.');
-    }
     if (entryRuntime.state === 'data-ready') {
-      setEntryDataRuntimeData(dependentEntryData.runtime, entryRuntime.data);
+      setEntryDataRuntimeData(dependentEntryRuntime, entryRuntime.data);
     } else if (entryRuntime.state === 'type-ready') {
-      setEntryDataRuntimeType(dependentEntryData.runtime, entryRuntime.type!);
+      setEntryDataRuntimeType(dependentEntryRuntime, entryRuntime.type!);
     } else if (entryRuntime.state === 'init' || force) {
       const result = prepareNode(runtimeContext, dependency.data, true);
       if (result.success && entryConfig.name in result.infuences) {
         if (result.success === 'data-ready') {
-          setEntryDataRuntimeData(dependentEntryData.runtime, result.infuences[entryConfig.name]);
+          setEntryDataRuntimeData(dependentEntryRuntime, result.infuences[entryConfig.name]);
         } else {
-          setEntryDataRuntimeType(dependentEntryData.runtime, result.infuences[entryConfig.name]);
+          setEntryDataRuntimeType(dependentEntryRuntime, result.infuences[entryConfig.name]);
         }
       } else if (!result.success) {
-        setEntryDataRuntimeInitOrUnavailable(dependentEntryData.runtime, false);
+        setEntryDataRuntimeInitOrUnavailable(dependentEntryRuntime, false);
       }
     }
   }
@@ -580,11 +658,11 @@ function errorToString(error: unknown): string {
   return String(error);
 }
 
-export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useDependencies: boolean = true): ExecResult {
+export function prepareNode(runtimeContext: RuntimeContext, data: GeneralNodeData, useDependencies: boolean = true): ExecResult {
   if (useDependencies) {
     prepareDependencies(runtimeContext, data);
   }
-  const meta = runtimeContext.getNodeMeta(data.meta);
+  const meta = runtimeContext.getNodeMeta(getNodeDataMeta(data));
   if (!meta) {
     throw new Error('Node meta is required.');
   }
@@ -852,28 +930,39 @@ export function prepareNode(runtimeContext: RuntimeContext, data: NodeData, useD
   }
 }
 
-type NodeInfo = {
-  config: NodeConfigData;
-  runtime?: NodeRuntimeData
-};
-
-function flowNodes(flowMeta: SubFlowConfigState, flowData?: FlowRuntimeData) {
-  return {
-    *[Symbol.iterator]() {
-      for (let i = 0; i < flowMeta.nodes.length; i++) {
-        const config = flowMeta.nodes[i].data;
-        const runtime = flowData?.nodes[i];
-        yield {
-          config,
-          runtime,
-        };
-      }
-    }
-  };
+interface Iterator<T, TReturn = void, TNext = unknown> {
+  [Symbol.iterator](): Generator<T, TReturn, TNext>;
 }
 
-function getStartNodes(flowMeta: SubFlowConfigState, flowData?: FlowRuntimeData): NodeInfo[] {
-  const result: NodeInfo[] = [];
+function flowNodes(flowData: FlowData): Iterator<NodeData>;
+function flowNodes(flowData: FlowDataPair): Iterator<NodeDataPair>;
+function flowNodes(flowData: GeneralFlowData): Iterator<GeneralNodeData>;
+function flowNodes(flowData: GeneralFlowData): Iterator<GeneralNodeData> {
+  if ('config' in flowData) {
+    const { config, runtime } = flowData;
+    return {
+      *[Symbol.iterator]() {
+        for (let i = 0; i < config.nodes.length; i++) {
+          yield {
+            config: config.nodes[i],
+            runtime: runtime.nodes[i],
+          };
+        }
+      }
+    }
+  } else {
+    return {
+      *[Symbol.iterator]() {
+        for (const nodeData of flowData.nodes) {
+          yield nodeData;
+        }
+      }
+    }
+  }
+}
+
+function getStartNodes(flowMeta: FlowState, flowData?: GeneralFlowData): GeneralNodeData[] {
+  const result: GeneralNodeData[] = [];
   const targets: Set<string> = new Set();
   for (const edge of flowMeta.edges) {
     targets.add(edge.target);
@@ -891,24 +980,39 @@ type InfluncedNodeInfo = {
   data: GeneralNodeData;
 }
 
-function entryName(value: NodeEntry | InputNodeEntryData | InputNodeEntryConfigData | InputNodeEntryConfig | OutputNodeEntryData | OutputNodeEntryConfigData | OutputNodeEntryConfig): string {
+function entryName(value: NodeEntry
+  | InputNodeEntryData 
+  | InputNodeEntryConfigData 
+  | InputNodeEntryConfig
+  | InputNodeEntryDataPair
+  | OutputNodeEntryData 
+  | OutputNodeEntryConfigData 
+  | OutputNodeEntryConfig
+  | OutputNodeEntryDataPair
+): string {
   if ("config" in value) {
-    return value.config.name;
+    if ("config" in value.config) {
+      return value.config.config.name;
+    } else {
+      return value.config.name;
+    }
   } else {
     return value.name;
   }
 }
 
-type GeneralFlowData = FlowData | { config: FlowConfigData, runtime: FlowRuntimeData };
+type FlowDataPair = { config: FlowConfigData, runtime: FlowRuntimeData };
+type GeneralFlowData = FlowData | FlowDataPair;
 
-function getFlowDependencyNodes(meta: FlowState, nodeData: NodeData | NodeConfigData, data?: GeneralFlowData): Record<string, InfluncedNodeInfo> {
-  const inputs = nodeData.inputs.map(entryName);
+function getFlowDependencyNodes(meta: FlowState, nodeData: GeneralNodeData, data?: GeneralFlowData): Record<string, InfluncedNodeInfo> {
+  const inputs = getNodeDataInputs(nodeData).map(entryName);
   if (inputs.length === 0) {
     return {};
   }
+  const id = getNodeDataId(nodeData);
   const result: Record<string, InfluncedNodeInfo> = {};
   for (const edge of meta.edges) {
-    if (edge.target === nodeData.id && edge.targetHandle && inputs.indexOf(edge.targetHandle) !== -1) {
+    if (edge.target === id && edge.targetHandle && inputs.indexOf(edge.targetHandle) !== -1) {
       const node = getFlowNodeById(meta, edge.source, data);
       if (node) {
         result[edge.targetHandle] = {

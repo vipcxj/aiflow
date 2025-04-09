@@ -1,6 +1,6 @@
 import type { Node as FlowNode, Edge as FlowEdge } from '@xyflow/react';
 import type { NormalizedNodeEntryType } from './data-type';
-import type { NodeMetaBase, NodeMeta, NodeEntry, NodeData, EdgeData, NodeConfigData, EdgeConfigData } from './node-type';
+import type { NodeMetaBase, NodeEntry, NodeData, EdgeData, NodeConfigData, EdgeConfigData } from './node-type';
 
 export type AFNodeType = string;
 export type AFNodeData = NodeData;
@@ -61,6 +61,17 @@ export type TemplateFlowState = FlowStateBase & {
   nodes: AFNode[];
   inputs: NodeEntry[];
   outputs: NodeEntry[];
+};
+
+export type TemplateFlowConfigState = {
+  id: string;
+  version?: string;
+  type: 'template';
+  nodes: AFConfigNode[];
+  edges: AFConfigEdge[];
+  inputs: NodeEntry[];
+  outputs: NodeEntry[];
+  variables: Record<string, VariableConfig>;
 };
 
 export type FlowState = MainFlowState | SubFlowState | TemplateFlowState;
