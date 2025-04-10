@@ -1,5 +1,5 @@
 import type { Code, CodeRef, NormalizedNodeEntryType } from './data-type'
-import type { SubFlowConfigState } from './flow-type';
+import type { SubFlowConfigState, FlowRuntimeData } from './flow-type';
 import type { RecommandLevel } from './enum';
 
 export type NodeEntry = {
@@ -85,21 +85,6 @@ export type OutputNodeEntryRuntimeData = {
 
 export type OutputNodeEntryData = OutputNodeEntryConfigData & OutputNodeEntryRuntimeData;
 
-export type FlowData = {
-  nodes: NodeData[];
-  edges: EdgeData[];
-};
-
-export type FlowConfigData = {
-  nodes: NodeConfigData[];
-  edges: EdgeConfigData[];
-};
-
-export type FlowRuntimeData = {
-  nodes: NodeRuntimeData[];
-  edges: EdgeRuntimeData[];
-};
-
 export type NodeMetaExtend = {
   inputs: NodeEntry[];
   outputs: NodeEntry[];
@@ -132,8 +117,8 @@ export type NodeData = NodeDataBase & {
   outputs: OutputNodeEntryData[];
   inputError?: NodeDataError,
   outputError?: NodeDataError,
-  template?: FlowData,
-  flow?: FlowData,
+  template?: FlowRuntimeData,
+  flow?: FlowRuntimeData,
 };
 
 export type NodeConfigData = NodeDataBase & {
@@ -142,8 +127,6 @@ export type NodeConfigData = NodeDataBase & {
   collapsed: boolean;
   inputs: InputNodeEntryConfigData[];
   outputs: OutputNodeEntryConfigData[];
-  template?: FlowConfigData;
-  flow?: FlowConfigData;
 }
 
 export type NodeRuntimeData = NodeDataBase & {

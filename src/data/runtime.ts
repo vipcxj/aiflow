@@ -1,6 +1,14 @@
 import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isSwitchNodeData, isVariableNodeData } from "./data-guard";
 import type { NormalizedNodeEntryType } from "./data-type";
-import type { AFNodeData, FlowState, SubFlowConfigState, TemplateFlowState, TemplateRef, Variable, WorkspaceState } from "./flow-type";
+import type {
+  AFNodeData,
+  FlowState,
+  FlowData, FlowConfigData, FlowRuntimeData,
+  TemplateFlowState,
+  TemplateRef,
+  Variable,
+  WorkspaceState,
+} from "./flow-type";
 import { getTypeFromData } from "./utils";
 import { evaluate } from '../lib/eval';
 import { ValError, validateNodeEntryData } from "./validate";
@@ -9,9 +17,30 @@ import typeApis from './type-apis';
 import { getGlobalNodeMetas } from "./nodes";
 import { getGlobalTemplates } from "./templates";
 import { mustNodeEntryTypeAssignTo } from "./assignable";
-import type { ExceptionError, FlowConfigData, FlowData, FlowRuntimeData, InputNodeEntryConfig, InputNodeEntryConfigData, InputNodeEntryData, InputNodeEntryRuntimeData, NodeConfigData, NodeData, NodeEntry, NodeEntryRuntime, NodeMeta, NodeMetaRef, NodeRuntimeData, OutputNodeEntryConfig, OutputNodeEntryConfigData, OutputNodeEntryData, OutputNodeEntryRuntimeData, ValidateError } from "./node-type";
+import type { EdgeData, ExceptionError, InputNodeEntryConfig, InputNodeEntryConfigData, InputNodeEntryData, InputNodeEntryRuntimeData, NodeConfigData, NodeData, NodeEntry, NodeEntryRuntime, NodeMeta, NodeMetaRef, NodeRuntimeData, OutputNodeEntryConfig, OutputNodeEntryConfigData, OutputNodeEntryData, OutputNodeEntryRuntimeData, ValidateError } from "./node-type";
 import { RecommandLevel } from "./enum";
 import { compareNodeEntryType } from "./compare";
+
+type NodeDataPair = {
+  config: NodeConfigData;
+  runtime: NodeRuntimeData;
+};
+type GeneralNodeData = NodeData | NodeDataPair;
+
+type InputNodeEntryDataPair = {
+  config: InputNodeEntryConfigData;
+  runtime: InputNodeEntryRuntimeData;
+};
+type OutputNodeEntryDataPair = {
+  config: OutputNodeEntryConfigData;
+  runtime: OutputNodeEntryRuntimeData;
+};
+
+type FlowDataPair = {
+  config: FlowConfigData,
+  runtime: FlowRuntimeData,
+};
+type GeneralFlowData = FlowData | FlowDataPair;
 
 export type RuntimeContext = {
   getFlowMeta: () => FlowState;
@@ -162,13 +191,6 @@ export function createExecRuntime(runtime: RuntimeContext, meta: NodeMeta, data:
 
 export type ExecFunc = (context: ExecRuntime) => Record<string, unknown>;
 
-type NodeDataPair = {
-  config: NodeConfigData;
-  runtime: NodeRuntimeData;
-};
-
-type GeneralNodeData = NodeData | NodeDataPair;
-
 function getNodeDataId(data: GeneralNodeData) {
   if ('config' in data) {
     return data.config.id;
@@ -231,16 +253,6 @@ function getNodeDataOutputs(data: GeneralNodeData): OutputNodeEntryDataPair[] | 
   } else {
     return data.outputs;
   }
-}
-
-type InputNodeEntryDataPair = {
-  config: InputNodeEntryConfigData;
-  runtime: InputNodeEntryRuntimeData;
-}
-
-type OutputNodeEntryDataPair = {
-  config: OutputNodeEntryConfigData;
-  runtime: OutputNodeEntryRuntimeData;
 }
 
 function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair) {
@@ -930,6 +942,14 @@ export function prepareNode(runtimeContext: RuntimeContext, data: GeneralNodeDat
   }
 }
 
+function getFlowEdges(flowData: GeneralFlowData): EdgeData[] {
+  if ('config' in flowData) {
+    return flowData.config.edges;
+  } else {
+    return flowData.edges;
+  }
+}
+
 interface Iterator<T, TReturn = void, TNext = unknown> {
   [Symbol.iterator](): Generator<T, TReturn, TNext>;
 }
@@ -961,14 +981,18 @@ function flowNodes(flowData: GeneralFlowData): Iterator<GeneralNodeData> {
   }
 }
 
-function getStartNodes(flowMeta: FlowState, flowData?: GeneralFlowData): GeneralNodeData[] {
+function getStartNodes(flowData: FlowData): Array<NodeData>;
+function getStartNodes(flowData: FlowDataPair): Array<NodeDataPair>;
+function getStartNodes(flowData: GeneralFlowData): Array<GeneralNodeData>;
+function getStartNodes(flowData: GeneralFlowData): Array<GeneralNodeData> {
   const result: GeneralNodeData[] = [];
   const targets: Set<string> = new Set();
-  for (const edge of flowMeta.edges) {
-    targets.add(edge.target);
+  for (const edge of getFlowEdges(flowData)) {
+    targets.add(edge.targetNode);
   }
-  for (const info of flowNodes(flowMeta, flowData)) {
-    if (!(info.config.id in targets)) {
+  for (const info of flowNodes(flowData)) {
+    const nodeId = getNodeDataId(info);
+    if (!(nodeId in targets)) {
       result.push(info);
     }
   }
@@ -1000,9 +1024,6 @@ function entryName(value: NodeEntry
     return value.name;
   }
 }
-
-type FlowDataPair = { config: FlowConfigData, runtime: FlowRuntimeData };
-type GeneralFlowData = FlowData | FlowDataPair;
 
 function getFlowDependencyNodes(meta: FlowState, nodeData: GeneralNodeData, data?: GeneralFlowData): Record<string, InfluncedNodeInfo> {
   const inputs = getNodeDataInputs(nodeData).map(entryName);
