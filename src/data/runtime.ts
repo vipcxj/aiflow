@@ -1,7 +1,6 @@
 import { isAssignNodeData, isBaseNodeData, isCode, isIfNodeData, isLiteralNodeData, isNativeNode, isSwitchNodeData, isVariableNodeData } from "./data-guard";
 import type { NormalizedNodeEntryType } from "./data-type";
 import type {
-  AFNodeData,
   FlowState,
   FlowData, FlowConfigData, FlowRuntimeData,
   TemplateFlowState,
@@ -20,6 +19,7 @@ import { mustNodeEntryTypeAssignTo } from "./assignable";
 import type { EdgeData, ExceptionError, InputNodeEntryConfig, InputNodeEntryConfigData, InputNodeEntryData, InputNodeEntryRuntimeData, NodeConfigData, NodeData, NodeEntry, NodeEntryRuntime, NodeMeta, NodeMetaRef, NodeRuntimeData, OutputNodeEntryConfig, OutputNodeEntryConfigData, OutputNodeEntryData, OutputNodeEntryRuntimeData, ValidateError } from "./node-type";
 import { RecommandLevel } from "./enum";
 import { compareNodeEntryType } from "./compare";
+import { get } from "http";
 
 type NodeDataPair = {
   config: NodeConfigData;
@@ -593,34 +593,37 @@ function setNodeDataOutputError(data: GeneralNodeData, error: unknown): void {
 }
 
 
-function calcNodeInputsState(nodeData: NodeData, nodeMeta: NodeMeta): 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'error' {
+function calcNodeInputsState(nodeData: GeneralNodeData, nodeMeta: NodeMeta): 'data-ready' | 'type-ready' | 'unavailable' | 'validate-failed' | 'error' {
   let targetNum = 0;
   let dataReadyNum = 0;
   let typeReadyNum = 0;
+  const dataInputs = getNodeDataInputs(nodeData);
   for (let i = 0; i < nodeMeta.inputs.length; i++) {
     const entryMeta = nodeMeta.inputs[i];
-    const entryData = nodeData.inputs[i];
-    if (entryMeta.optional) {
-      continue;
+    const entryData = dataInputs[i];
+    const entryRuntime = getEntryDataRuntime(entryData);
+    if (entryMeta.recommandLevel === RecommandLevel.MUST) {
+      targetNum++;
     }
-    targetNum++;
-    if (entryData.runtime.state === 'init') {
-      return 'init';
-    } else if (entryData.runtime.state === 'data-ready') {
+    if (entryRuntime.state === 'init' || entryRuntime.state === 'unavailable') {
+      if (entryMeta.recommandLevel === RecommandLevel.MUST) {
+        return 'unavailable';
+      } else {
+        continue
+      }
+    } else if (entryRuntime.state === 'data-ready') {
       dataReadyNum++;
-    } else if (entryData.runtime.state === 'type-ready') {
+    } else if (entryRuntime.state === 'type-ready') {
       typeReadyNum++;
-    } else if (entryData.runtime.state === 'unavailable') {
-      continue;
-    } else if (entryData.runtime.state === 'error') {
-      return 'error';
+    } else if (entryRuntime.state === 'validate-failed') {
+      return 'validate-failed';
     } else {
-      throw new Error(`Invalid entry state: ${entryData.runtime.state}.`);
+      throw new Error(`Invalid entry state: ${entryRuntime.state}.`);
     }
   }
-  if (dataReadyNum === targetNum) {
+  if (dataReadyNum >= targetNum) {
     return 'data-ready';
-  } else if (typeReadyNum === targetNum) {
+  } else if (dataReadyNum + typeReadyNum >= targetNum) {
     return 'type-ready';
   } else {
     return 'unavailable';
@@ -1087,12 +1090,12 @@ export function execSubFlow(runtimeContext: RuntimeContext, meta: FlowState, dat
   if (templateMeta) {
 
   } else {
-    const startNodeDatas = getStartNodes(meta, data);
+    const startNodeDatas = getStartNodes(data);
     if (startNodeDatas.length === 0) {
       return { success: 'data-ready', infuences: {} };
     }
-    let currentNodes: AFNodeData[] = startNodeDatas;
-    let nextNodes: AFNodeData[];
+    let currentNodes: GeneralNodeData[] = startNodeDatas;
+    let nextNodes: GeneralNodeData[];
     do {
       nextNodes = [];
       for (const nodeData of currentNodes) {
@@ -1101,18 +1104,19 @@ export function execSubFlow(runtimeContext: RuntimeContext, meta: FlowState, dat
           return result;
         }
         const influncedEntries = Object.keys(result.infuences);
-        const influnceds = getFlowNodeByInflunce(meta, nodeData.id, influncedEntries, data);
+        const influnceds = getFlowNodeByInflunce(meta, getNodeDataId(nodeData), influncedEntries, data);
         for (const influnce of influncedEntries) {
           const influnced = influnceds[influnce];
           if (influnced) {
-            const entryData = getNodeEntryData(influnced.data, influnced.entry, 'input');
+            const entryData = getInputNodeEntryData(influnced.data, influnced.entry);
             if (!entryData) {
-              return { success: false, reason: 'exception', error: 'Entry data not found.' };
+              throw new Error('Entry data not found.');
             }
-            if (entryData.runtime.data !== result.infuences[influnce]) {
-              entryData.runtime.data = result.infuences[influnce];
-              entryData.runtime.ready = true;
-              entryData.runtime.type = getTypeFromData(result.infuences[influnce]);
+            const entryRuntime = getEntryDataRuntime(entryData);
+            if (entryRuntime.data !== result.infuences[influnce]) {
+              entryRuntime.data = result.infuences[influnce];
+              entryRuntime.state = 'data-ready';
+              entryRuntime.type = getTypeFromData(result.infuences[influnce]);
               nextNodes.push(influnced.data);
             }
           }
