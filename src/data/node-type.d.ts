@@ -15,6 +15,7 @@ type NodeMetaBase = {
   id: string;
   version?: string;
   type: string;
+  category: string;
   title: string;
   inputs: NodeEntry[];
   outputs: NodeEntry[];
@@ -109,9 +110,15 @@ type NodeDataBase = {
   id: string;
 }
 
+export type NodeInputState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'validate-failed';
+export type NodeOutputState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'validate-failed' | 'exception';
+
 export type NodeData = NodeDataBase & {
+  attributes: Record<string, unknown>;
   meta: NodeMetaRef;
   metaExtend?: NodeMetaExtend;
+  inputState: NodeInputState;
+  outputState: NodeOutputState;
   collapsed: boolean;
   inputs: InputNodeEntryData[];
   outputs: OutputNodeEntryData[];
@@ -122,6 +129,7 @@ export type NodeData = NodeDataBase & {
 };
 
 export type NodeConfigData = NodeDataBase & {
+  attributes: Record<string, unknown>;
   meta: NodeMetaRef;
   metaExtend?: NodeMetaExtend;
   collapsed: boolean;
@@ -130,6 +138,8 @@ export type NodeConfigData = NodeDataBase & {
 }
 
 export type NodeRuntimeData = NodeDataBase & {
+  inputState: NodeInputState;
+  outputState: NodeOutputState;
   inputs: InputNodeEntryRuntimeData[];
   outputs: OutputNodeEntryRuntimeData[];
   inputError?: NodeDataError,

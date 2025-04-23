@@ -50,11 +50,13 @@ export type MainFlowState = FlowStateBase & {
 
 export type SubFlowState = FlowStateBase & NodeMetaBase & {
   type: 'subflow';
+  category: 'subflow';
   nodes: AFNode[];
 };
 
 export type SubFlowConfigState = NodeMetaBase & {
   type: 'subflow';
+  category: 'subflow';
   nodes: AFConfigNode[];
   edges: AFConfigEdge[];
   variables: Record<string, VariableConfig>;
