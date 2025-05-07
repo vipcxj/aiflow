@@ -42,6 +42,8 @@ export type InputNodeEntryConfig = {
   name: string;
   mode: 'handle' | 'input';
   modeIndex: number;
+  dataReady: boolean;
+  data?: unknown;
 };
 
 export type OutputNodeEntryConfig = {
@@ -110,7 +112,7 @@ type NodeDataBase = {
   id: string;
 }
 
-export type NodeInputState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'validate-failed';
+export type NodeInputState = 'not-ready' | 'data-ready' | 'type-ready';
 export type NodeOutputState = 'init' | 'data-ready' | 'type-ready' | 'unavailable' | 'validate-failed' | 'exception';
 
 export type NodeData = NodeDataBase & {

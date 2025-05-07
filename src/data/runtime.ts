@@ -38,6 +38,7 @@ import type {
   ValidateError
 } from "./node-type";
 import { compareNodeEntryType } from "./compare";
+import { RecommandLevel } from "./enum";
 
 type NodeDataPair = {
   config: NodeConfigData;
@@ -324,7 +325,10 @@ function getNodeDataOutputs(data: GeneralNodeData): OutputNodeEntryDataPair[] | 
   }
 }
 
-function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair) {
+function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair): InputNodeEntryConfig;
+function getEntryDataConfig(data: OutputNodeEntryData | OutputNodeEntryDataPair): OutputNodeEntryConfig;
+function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair): InputNodeEntryConfig | OutputNodeEntryConfig;
+function getEntryDataConfig(data: InputNodeEntryData | InputNodeEntryDataPair | OutputNodeEntryData | OutputNodeEntryDataPair): InputNodeEntryConfig | OutputNodeEntryConfig {
   if ('config' in data.config) {
     return (data as (InputNodeEntryDataPair | OutputNodeEntryDataPair)).config.config;
   } else {
@@ -628,38 +632,67 @@ function setNodeDataOutputError(data: GeneralNodeData, error: unknown): void {
   }
 }
 
-function prepareDependencies(runtimeContext: RuntimeContext, data: GeneralNodeData, force: boolean = false): void {
-  const flowData = runtimeContext.getFlowData();
-  const dependencies = getFlowDependencyNodes(data, flowData);
-  for (const entry of Object.keys(dependencies)) {
-    const dependency = dependencies[entry];
-    const entryData = getOutputNodeEntryData(dependency.data, dependency.entry);
-    if (!entryData) {
-      throw new Error('Entry data not found.');
-    }
-    const dependentEntryData = getInputNodeEntryData(data, entry);
-    if (!dependentEntryData) {
-      throw new Error('Dependent entry data not found.');
-    }
-    const dependentEntryRuntime = getEntryDataRuntime(dependentEntryData);
-    const entryRuntime = getEntryDataRuntime(entryData);
-    if (entryRuntime.state === 'data-ready') {
-      setEntryDataRuntimeData(dependentEntryRuntime, entryRuntime.data);
-    } else if (entryRuntime.state === 'type-ready') {
-      setEntryDataRuntimeType(dependentEntryRuntime, entryRuntime.type!);
-    } else if (entryRuntime.state === 'init' || force) {
-      prepareNode(runtimeContext, dependency.data, true);
-      // 重新检查状态，不依赖 TypeScript 的类型缩小
-      const currentState = entryRuntime.state as NodeEntryRuntime['state'];
-      if (currentState === 'data-ready') {
-        setEntryDataRuntimeData(dependentEntryRuntime, entryRuntime.data);
-      } else if (currentState === 'type-ready') {
-        setEntryDataRuntimeType(dependentEntryRuntime, entryRuntime.type!);
-      } else {
-        setEntryDataRuntimeInitOrUnavailable(dependentEntryRuntime, false);
+function calcNodeDataInputState(meta: NodeMeta, data: GeneralNodeData): void {
+  let state: NodeData['inputState'] = 'data-ready';
+  for (const { meta: entryMeta, data: entryData } of nodeInputs(meta, data)) {
+    const runtime = getEntryDataRuntime(entryData);
+    if (runtime.state === 'data-ready') {
+      continue;
+    } else if (runtime.state === 'type-ready') {
+      if (state === 'data-ready') {
+        state = 'type-ready';
+      }
+    } else if (runtime.state === 'validate-failed') {
+      state = 'not-ready';
+    } else {
+      if (entryMeta.recommandLevel === RecommandLevel.MUST) {
+        state = 'not-ready';
       }
     }
   }
+}
+
+function prepareDependencies(runtimeContext: RuntimeContext, data: GeneralNodeData, meta: NodeMeta, force: boolean = false): void {
+  const flowData = runtimeContext.getFlowData();
+  const dependencies = getFlowDependencyNodes(data, flowData);
+  const dependencyEntries = Object.keys(dependencies);
+  for (const entry of getNodeDataInputs(data)) {
+    const entryConfig = getEntryDataConfig(entry);
+    const entryRuntime = getEntryDataRuntime(entry);
+    if (entryConfig.mode === 'input') {
+      if (entryConfig.dataReady) {
+        setEntryDataRuntimeData(entryRuntime, entryConfig.data);
+      } else {
+        setEntryDataRuntimeInitOrUnavailable(entryRuntime, true);
+      }
+    } else {
+      if (entryConfig.name in dependencyEntries) {
+        const dependency = dependencies[entryConfig.name];
+        const dependencyEntryData = getOutputNodeEntryData(dependency.data, dependency.entry);
+        if (!dependencyEntryData) {
+          throw new Error('Entry data not found.');
+        }
+        const dependencyEntryRuntime = getEntryDataRuntime(dependencyEntryData);
+        if (dependencyEntryRuntime.state === 'data-ready') {
+          setEntryDataRuntimeData(entryRuntime, dependencyEntryRuntime.data);
+        } else if (dependencyEntryRuntime.state === 'type-ready') {
+          setEntryDataRuntimeType(entryRuntime, dependencyEntryRuntime.type!);
+        } else if (dependencyEntryRuntime.state === 'init' || force) {
+          prepareNode(runtimeContext, dependency.data, undefined, true);
+          // 重新检查状态，不依赖 TypeScript 的类型缩小
+          const currentState = dependencyEntryRuntime.state as NodeEntryRuntime['state'];
+          if (currentState === 'data-ready') {
+            setEntryDataRuntimeData(entryRuntime, dependencyEntryRuntime.data);
+          } else if (currentState === 'type-ready') {
+            setEntryDataRuntimeType(entryRuntime, dependencyEntryRuntime.type!);
+          } else {
+            setEntryDataRuntimeInitOrUnavailable(entryRuntime, false);
+          }
+        }
+      }
+    }
+  }
+  calcNodeDataInputState(meta, data);
 }
 
 function errorToString(error: unknown): string {
@@ -702,13 +735,15 @@ function extractTemplateData(nodeMeta: CompoundNodeMeta, nodeData: GeneralNodeDa
   }
 }
 
-export function prepareNode(runtimeContext: RuntimeContext, data: GeneralNodeData, useDependencies: boolean = true): PrepareResult {
-  if (useDependencies) {
-    prepareDependencies(runtimeContext, data);
+export function prepareNode(runtimeContext: RuntimeContext, data: GeneralNodeData, meta: NodeMeta | undefined = undefined, useDependencies: boolean = true): PrepareResult {
+  if (!meta) {
+    meta = runtimeContext.getNodeMeta(getNodeDataMeta(data));
   }
-  const meta = runtimeContext.getNodeMeta(getNodeDataMeta(data));
   if (!meta) {
     throw new Error('Node meta is required.');
+  }
+  if (useDependencies) {
+    prepareDependencies(runtimeContext, data, meta);
   }
   const inputsState = getNodeDataInputState(data);
   if (inputsState !== 'data-ready' && inputsState !== 'type-ready') {
@@ -912,7 +947,17 @@ function getNodeByCategory(runtimeContext: RuntimeContext, flowData: GeneralFlow
 function getOutputNodes(runtimeContext: RuntimeContext, flowData: GeneralFlowData): GeneralNodePair[] {
   return getNodeByCategory(runtimeContext, flowData, 'output');
 }
-   
+
+function getEntryNode(runtimeContext: RuntimeContext, flowData: GeneralFlowData): GeneralNodePair {
+  const nodes = getNodeByCategory(runtimeContext, flowData, 'entry');
+  if (nodes.length === 0) {
+    throw new Error('No entry nodes found.');
+  }
+  if (nodes.length > 1) {
+    throw new Error('Multiple entry nodes found.');
+  }
+  return nodes[0];
+}
 
 type InfluncedNodeInfo = {
   /**
@@ -993,37 +1038,33 @@ function getFlowNodeByInflunce(flowData: GeneralFlowData, nodeId: string, influn
 }
 
 export function execSubFlow(runtimeContext: RuntimeContext, flowData: GeneralFlowData, templateData?: GeneralFlowData): PrepareResult {
-  if (templateData) {
-
-  } else {
-    const outputNodes = getOutputNodes(runtimeContext, flowData);
-    if (outputNodes.length === 0) {
-      return { success: true, dataInfluences: {}, typeInfluences: {} };
-    }
-    const result: PrepareResult = {
-      success: true,
-      dataInfluences: {},
-      typeInfluences: {},
-    };
-    for (const { data: outputNodeData } of outputNodes) {
-      const outputAttributes = getNodeDataAttributes(outputNodeData);
-      do_assert('outputName' in outputAttributes, '"outputName" attribute not found in output node.');
-      const outputName = outputAttributes.outputName;
-      do_assert(typeof outputName === 'string', 'Output node name is not a string.');
-      const { success, dataInfluences, typeInfluences } = prepareNode(runtimeContext, outputNodeData, true);
-      if ('output' in dataInfluences) {
-        result.dataInfluences[outputName] = dataInfluences['output'];
-      } else if ('output' in typeInfluences) {
-        result.typeInfluences[outputName] = typeInfluences['output'];
-      }
-      if (success === false) {
-        result.success = false;
-      } else if (success !== true) {
-        if (result.success) {
-          result.success = undefined;
-        }
-      }
-    }
-    return result;
+  const outputNodes = getOutputNodes(runtimeContext, templateData || flowData);
+  if (outputNodes.length === 0) {
+    return { success: true, dataInfluences: {}, typeInfluences: {} };
   }
+  const result: PrepareResult = {
+    success: true,
+    dataInfluences: {},
+    typeInfluences: {},
+  };
+  for (const { data: outputNodeData } of outputNodes) {
+    const outputAttributes = getNodeDataAttributes(outputNodeData);
+    do_assert('outputName' in outputAttributes, '"outputName" attribute not found in output node.');
+    const outputName = outputAttributes.outputName;
+    do_assert(typeof outputName === 'string', 'Output node name is not a string.');
+    const { success, dataInfluences, typeInfluences } = prepareNode(runtimeContext, outputNodeData, true);
+    if ('output' in dataInfluences) {
+      result.dataInfluences[outputName] = dataInfluences['output'];
+    } else if ('output' in typeInfluences) {
+      result.typeInfluences[outputName] = typeInfluences['output'];
+    }
+    if (success === false) {
+      result.success = false;
+    } else if (success !== true) {
+      if (result.success) {
+        result.success = undefined;
+      }
+    }
+  }
+  return result;
 }
